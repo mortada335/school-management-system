@@ -157,13 +157,17 @@ export default function Students() {
         </select>
       </div>
 
-      <div className="rounded-2xl border border-white/10 overflow-hidden bg-white/5">
-        <table className="w-full text-sm">
-          <thead className="border-b border-white/10 bg-white/5">
+      {/* Table */}
+      <div className="rounded-2xl border border-white/10 overflow-hidden bg-white/5 shadow-xl">
+        <table className="w-full text-sm text-left">
+          <thead className="border-b border-white/10 bg-gray-900/60 backdrop-blur">
             <tr>
-              {["Name", "Class", "Gender", "Guardian", "Phone", ""].map((h) => (
-                <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">{h}</th>
-              ))}
+              <th className="px-4 py-3.5 text-xs font-bold uppercase tracking-wider text-gray-300">Name</th>
+              <th className="px-4 py-3.5 text-xs font-bold uppercase tracking-wider text-gray-300">Class</th>
+              <th className="px-4 py-3.5 text-xs font-bold uppercase tracking-wider text-gray-300">Gender</th>
+              <th className="px-4 py-3.5 text-xs font-bold uppercase tracking-wider text-gray-300">Guardian</th>
+              <th className="px-4 py-3.5 text-xs font-bold uppercase tracking-wider text-gray-300">Phone</th>
+              <th className="px-4 py-3.5 text-right text-xs font-bold uppercase tracking-wider text-gray-300">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5">
@@ -173,21 +177,39 @@ export default function Students() {
               <tr><td colSpan={6} className="py-16 text-center text-gray-600">No students found. Click "+ Add Student".</td></tr>
             ) : filtered.map((s) => (
               <tr key={s.id} className="hover:bg-white/5 transition-colors">
-                <td className="px-4 py-3">
+                <td className="px-4 py-3.5">
                   <p className="font-medium text-white">{s.name}</p>
                   {s.nameEn && <p className="text-xs text-gray-500">{s.nameEn}</p>}
                 </td>
-                <td className="px-4 py-3 text-gray-400">{s.className}</td>
-                <td className="px-4 py-3">
-                  <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium border ${s.gender === "male" ? "bg-blue-500/20 text-blue-400 border-blue-500/30" : "bg-pink-500/20 text-pink-400 border-pink-500/30"}`}>
+                <td className="px-4 py-3.5 text-gray-300">{s.className}</td>
+                <td className="px-4 py-3.5">
+                  <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-semibold border ${s.gender === "male" ? "bg-blue-500/20 text-blue-400 border-blue-500/30" : "bg-pink-500/20 text-pink-400 border-pink-500/30"}`}>
                     {s.gender === "male" ? "Male" : "Female"}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-gray-400">{s.guardianName}</td>
-                <td className="px-4 py-3 text-gray-400">{s.guardianPhone}</td>
-                <td className="px-4 py-3 text-right">
-                  <button onClick={() => openEdit(s)} className="text-indigo-400 hover:text-indigo-300 mr-4 text-xs">Edit</button>
-                  <button onClick={() => handleDelete(s)} className="text-red-400 hover:text-red-300 text-xs">Delete</button>
+                <td className="px-4 py-3.5 text-gray-300">{s.guardianName || "—"}</td>
+                <td className="px-4 py-3.5 text-gray-400 font-mono text-xs">{s.guardianPhone || "—"}</td>
+                <td className="px-4 py-3.5 text-right">
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      onClick={() => openEdit(s)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1 text-xs font-medium text-indigo-400 hover:bg-indigo-500/20 hover:text-indigo-300 transition-all active:scale-95"
+                    >
+                      <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                      </svg>
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(s)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-xs font-medium text-rose-400 hover:bg-rose-500/20 hover:text-rose-300 transition-all active:scale-95"
+                    >
+                      <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                      Delete
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

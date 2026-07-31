@@ -136,13 +136,15 @@ export default function Classes() {
       </div>
 
       {/* Table */}
-      <div className="rounded-2xl border border-white/10 overflow-hidden bg-white/5">
-        <table className="w-full text-sm">
-          <thead className="border-b border-white/10 bg-white/5">
+      <div className="rounded-2xl border border-white/10 overflow-hidden bg-white/5 shadow-xl">
+        <table className="w-full text-sm text-left">
+          <thead className="border-b border-white/10 bg-gray-900/60 backdrop-blur">
             <tr>
-              {["Class Name", "Grade", "Section", "Homeroom Teacher", ""].map((h) => (
-                <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">{h}</th>
-              ))}
+              <th className="px-4 py-3.5 text-xs font-bold uppercase tracking-wider text-gray-300">Class Name</th>
+              <th className="px-4 py-3.5 text-xs font-bold uppercase tracking-wider text-gray-300">Grade</th>
+              <th className="px-4 py-3.5 text-xs font-bold uppercase tracking-wider text-gray-300">Section</th>
+              <th className="px-4 py-3.5 text-xs font-bold uppercase tracking-wider text-gray-300">Homeroom Teacher</th>
+              <th className="px-4 py-3.5 text-right text-xs font-bold uppercase tracking-wider text-gray-300">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5">
@@ -152,13 +154,31 @@ export default function Classes() {
               <tr><td colSpan={5} className="py-16 text-center text-gray-600">No classes found. Click "+ Add Class".</td></tr>
             ) : classes.map((c) => (
               <tr key={c.id} className="hover:bg-white/5 transition-colors">
-                <td className="px-4 py-3 font-medium text-white">{c.name}</td>
-                <td className="px-4 py-3 text-gray-400">Grade {c.grade}</td>
-                <td className="px-4 py-3 text-gray-400">{c.section}</td>
-                <td className="px-4 py-3 text-gray-400">{c.teacherName || "—"}</td>
-                <td className="px-4 py-3 text-right">
-                  <button onClick={() => openEdit(c)} className="text-indigo-400 hover:text-indigo-300 mr-4 text-xs">Edit</button>
-                  <button onClick={() => handleDelete(c)} className="text-red-400 hover:text-red-300 text-xs">Delete</button>
+                <td className="px-4 py-3.5 font-medium text-white">{c.name}</td>
+                <td className="px-4 py-3.5 text-gray-300 font-mono text-xs">Grade {c.grade}</td>
+                <td className="px-4 py-3.5 text-gray-300 font-mono text-xs">{c.section}</td>
+                <td className="px-4 py-3.5 text-gray-400">{c.teacherName || "—"}</td>
+                <td className="px-4 py-3.5 text-right">
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      onClick={() => openEdit(c)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1 text-xs font-medium text-indigo-400 hover:bg-indigo-500/20 hover:text-indigo-300 transition-all active:scale-95"
+                    >
+                      <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                      </svg>
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(c)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-xs font-medium text-rose-400 hover:bg-rose-500/20 hover:text-rose-300 transition-all active:scale-95"
+                    >
+                      <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                      Delete
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

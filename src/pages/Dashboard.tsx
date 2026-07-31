@@ -16,7 +16,6 @@ import {
 const navItems = [
   {
     label: "Overview",
-    labelAr: "نظرة عامة",
     to: "/dashboard",
     end: true,
     icon: (
@@ -27,7 +26,6 @@ const navItems = [
   },
   {
     label: "Classes",
-    labelAr: "الصفوف الدراسية",
     to: "/dashboard/classes",
     icon: (
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
@@ -37,7 +35,6 @@ const navItems = [
   },
   {
     label: "Subjects",
-    labelAr: "المواد الدراسية",
     to: "/dashboard/subjects",
     icon: (
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
@@ -47,7 +44,6 @@ const navItems = [
   },
   {
     label: "Teachers",
-    labelAr: "المعلمون",
     to: "/dashboard/teachers",
     icon: (
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
@@ -57,7 +53,6 @@ const navItems = [
   },
   {
     label: "Students",
-    labelAr: "الطلاب",
     to: "/dashboard/students",
     icon: (
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
@@ -67,7 +62,6 @@ const navItems = [
   },
   {
     label: "Attendance",
-    labelAr: "الحضور والغياب",
     to: "/dashboard/attendance",
     icon: (
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
@@ -77,7 +71,6 @@ const navItems = [
   },
   {
     label: "Grades",
-    labelAr: "الدرجات والنتائج",
     to: "/dashboard/grades",
     icon: (
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
@@ -87,7 +80,6 @@ const navItems = [
   },
   {
     label: "Fees",
-    labelAr: "الرسوم الدراسية",
     to: "/dashboard/fees",
     icon: (
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
@@ -98,84 +90,89 @@ const navItems = [
   },
   {
     label: "Announcements",
-    labelAr: "الإعلانات",
     to: "/dashboard/announcements",
     icon: (
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
-        <path d="M13.92 3.845a19.361 19.361 0 0 1-6.3 1.98C6.765 5.942 5.89 6 5 6a4 4 0 0 0-.504 7.969l.504.031c.572 0 1.174-.03 1.772-.09a19.361 19.361 0 0 1 6.448 2.07A1.5 1.5 0 0 0 15.5 14.5V5.5a1.5 1.5 0 0 0-1.58-1.655ZM17.5 8.5a.5.5 0 0 0-.5.5v2a.5.5 0 0 0 1 0V9a.5.5 0 0 0-.5-.5Z" />
+        <path d="M4.25 3A2.25 2.25 0 0 0 2 5.25v8.5A2.25 2.25 0 0 0 4.25 16h11.5A2.25 2.25 0 0 0 18 13.75v-8.5A2.25 2.25 0 0 0 15.75 3H4.25ZM3.5 5.25a.75.75 0 0 1 .75-.75h11.5a.75.75 0 0 1 .75.75v1.272l-6.19 3.715a1.25 1.25 0 0 1-1.29 0L3.5 6.522V5.25Zm0 3.033 5.489 3.293a2.75 2.75 0 0 0 2.838 0L17.327 8.28v5.47a.75.75 0 0 1-.75.75H4.25a.75.75 0 0 1-.75-.75V8.283Z" />
       </svg>
     ),
   },
 ];
 
 const roleBadgeColor: Record<string, string> = {
-  superadmin: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+  superadmin: "bg-amber-500/20 text-amber-400 border-amber-500/30",
   admin: "bg-indigo-500/20 text-indigo-400 border-indigo-500/30",
-  teacher: "bg-green-500/20 text-green-400 border-green-500/30",
-  student: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+  teacher: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+  student: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
 };
 
 export default function Dashboard() {
   const { user, profile, school, role, logout } = useAuth();
   const { activeYear, setActiveYear, allYears } = useAcademicYear();
   const navigate = useNavigate();
+
   const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  const displayName = profile?.displayName ?? user?.displayName ?? user?.email ?? "User";
+  const initials = displayName
+    .split(" ")
+    .map((n) => n[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
+  const email = profile?.email ?? user?.email ?? "";
 
   const handleLogout = async () => {
     await logout();
     navigate("/login");
   };
 
-  const displayName = profile?.displayName ?? user?.displayName ?? user?.email ?? "Unknown";
-  const email = profile?.email ?? user?.email ?? "";
-
-  const initials = displayName
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
-
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-950 text-white">
+    <div className="flex h-screen w-screen overflow-hidden bg-gray-950 text-gray-100 antialiased">
       {/* ── Sidebar ── */}
       <aside
-        className={`${
+        className={`relative flex flex-col border-r border-white/10 bg-gray-900/90 backdrop-blur-md transition-all duration-200 ${
           sidebarOpen ? "w-64" : "w-16"
-        } flex shrink-0 flex-col border-e border-white/10 bg-gray-900/80 backdrop-blur transition-[width] duration-200`}
+        }`}
       >
-        {/* Logo row */}
-        <div className="flex h-16 items-center gap-3 px-4 border-b border-white/10">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-600 shadow-lg shadow-indigo-500/40">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4 text-white">
+        {/* Brand Header */}
+        <div className="flex h-16 items-center gap-3 border-b border-white/10 px-4">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 shadow-md shadow-indigo-500/30">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5 text-white">
               <path d="M11.7 2.805a.75.75 0 0 1 .6 0A60.65 60.65 0 0 1 22.83 8.72a.75.75 0 0 1-.231 1.337 49.948 49.948 0 0 0-9.902 3.912l-.003.002c-.114.06-.227.119-.34.18a.75.75 0 0 1-.707 0A50.88 50.88 0 0 0 7.5 12.173v-.224c0-.131.067-.248.172-.311a54.615 54.615 0 0 1 4.653-2.52.75.75 0 0 0-.65-1.352 56.123 56.123 0 0 0-4.78 2.589 1.858 1.858 0 0 0-.859 1.228 49.803 49.803 0 0 0-4.634-1.527.75.75 0 0 1-.231-1.337A60.653 60.653 0 0 1 11.7 2.805Z" />
               <path d="M13.06 15.473a48.45 48.45 0 0 1 7.666-3.282c.134 1.414.22 2.843.255 4.284a.75.75 0 0 1-.46.71 47.87 47.87 0 0 1-8.105 2.571.75.75 0 0 1-.832-.621 48.494 48.494 0 0 1-.764-4.065v-.001c-.065-.542-.116-1.09-.148-1.637Z" />
               <path d="M5.072 15.282a48.553 48.553 0 0 1 7.664 3.282c-.163.91-.337 1.802-.523 2.676a47.856 47.856 0 0 1-8.107-2.57.75.75 0 0 1-.46-.71 48.462 48.462 0 0 1 .426-2.678Z" />
             </svg>
           </div>
           {sidebarOpen && (
-            <span className="truncate text-sm font-semibold text-white">
-              {school?.name ?? "EduSaaS"}
-            </span>
+            <div className="min-w-0 flex-1">
+              <span className="truncate text-sm font-bold text-white tracking-wide block">
+                EduSaaS
+              </span>
+              <span className="text-[10px] text-indigo-400 font-medium tracking-wider uppercase block">
+                School OS
+              </span>
+            </div>
           )}
         </div>
 
-        {/* Nav */}
-        <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-1">
+        {/* Nav Items */}
+        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1.5">
           {navItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               end={item.end}
               className={({ isActive }) =>
-                `group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150 ${
+                `group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
                   isActive
-                    ? "bg-indigo-600/20 text-indigo-400"
+                    ? "bg-gradient-to-r from-indigo-600/30 to-violet-600/20 text-white border border-indigo-500/40 shadow-sm"
                     : "text-gray-400 hover:bg-white/5 hover:text-white"
                 }`
               }
             >
-              <span className="shrink-0">{item.icon}</span>
+              <span className="shrink-0 transition-transform group-hover:scale-110">{item.icon}</span>
               {sidebarOpen && <span className="truncate">{item.label}</span>}
             </NavLink>
           ))}
@@ -186,12 +183,12 @@ export default function Dashboard() {
         {/* User section */}
         <div className="p-3">
           <div
-            className={`flex items-center gap-3 rounded-lg px-2 py-2 ${
+            className={`flex items-center gap-3 rounded-xl border border-white/5 bg-white/5 p-2.5 ${
               sidebarOpen ? "" : "justify-center"
             }`}
           >
-            <Avatar className="h-8 w-8 shrink-0">
-              <AvatarFallback className="bg-indigo-700 text-xs font-bold text-white">
+            <Avatar className="h-8 w-8 shrink-0 ring-2 ring-indigo-500/30">
+              <AvatarFallback className="bg-indigo-600 text-xs font-bold text-white">
                 {initials}
               </AvatarFallback>
             </Avatar>
@@ -200,16 +197,16 @@ export default function Dashboard() {
                 <p className="truncate text-xs font-semibold text-white">
                   {displayName}
                 </p>
-                <p className="truncate text-[10px] text-gray-500">
+                <p className="truncate text-[10px] text-gray-400">
                   {email}
                 </p>
               </div>
             )}
           </div>
           {sidebarOpen && role && (
-            <div className="mt-1 px-2">
+            <div className="mt-2 px-1 flex items-center justify-between">
               <span
-                className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium ${
+                className={`inline-flex rounded-full border px-2.5 py-0.5 text-[10px] font-semibold tracking-wide capitalize ${
                   roleBadgeColor[role] ?? roleBadgeColor.student
                 }`}
               >
@@ -222,14 +219,14 @@ export default function Dashboard() {
 
       {/* ── Main content ── */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Top bar */}
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-white/10 bg-gray-900/60 px-6 backdrop-blur">
+        {/* Top Navbar */}
+        <header className="flex h-16 shrink-0 items-center justify-between border-b border-white/10 bg-gray-900/80 px-6 backdrop-blur-md">
           <div className="flex items-center gap-4">
             <button
               type="button"
               aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
               onClick={() => setSidebarOpen((v) => !v)}
-              className="rounded-lg p-1.5 text-gray-400 hover:bg-white/10 hover:text-white transition-colors"
+              className="rounded-xl border border-white/10 bg-white/5 p-2 text-gray-400 hover:bg-white/10 hover:text-white transition-all active:scale-95"
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
                 <path fillRule="evenodd" d="M2 4.75A.75.75 0 0 1 2.75 4h14.5a.75.75 0 0 1 0 1.5H2.75A.75.75 0 0 1 2 4.75Zm0 10.5a.75.75 0 0 1 .75-.75h7.5a.75.75 0 0 1 0 1.5h-7.5a.75.75 0 0 1-.75-.75ZM2 10a.75.75 0 0 1 .75-.75h14.5a.75.75 0 0 1 0 1.5H2.75A.75.75 0 0 1 2 10Z" clipRule="evenodd" />
@@ -237,18 +234,23 @@ export default function Dashboard() {
             </button>
 
             {school && (
-              <div>
-                <p className="text-sm font-semibold text-white">{school.name}</p>
+              <div className="flex items-center gap-2">
+                <span className="flex h-2 w-2 rounded-full bg-emerald-500 ring-4 ring-emerald-500/20" />
+                <span className="text-sm font-bold text-white tracking-tight">{school.name}</span>
               </div>
             )}
           </div>
 
           <div className="flex items-center gap-4">
             {/* Academic Year Selector */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-400 hidden sm:inline">Year:</span>
+            <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-1">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-indigo-400" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M10.394 2.08a1 1 0 00-.788 0l-7 3a1 1 0 000 1.84L5.25 8.051a.999.999 0 01.356-.257l4-1.714a1 1 0 11.788 1.838L7.667 9.088l1.939.831a1 1 0 00.788 0l7-3a1 1 0 000-1.84l-7-3z" />
+                <path d="M4.608 10.121L2.394 9.172a1 1 0 00-1.182.28 1 1 0 00.28 1.182l2.608 1.118a3.001 3.001 0 002.392 0l7.394-3.169a1 1 0 00.514-.547l.9-2.1a1 1 0 00-1.838-.788l-.707 1.65-6.755 2.895a1 1 0 01-.794 0z" />
+              </svg>
+              <span className="text-xs text-gray-400 font-medium hidden sm:inline">Academic Year:</span>
               <Select value={activeYear} onValueChange={(a) => setActiveYear(a as string)}>
-                <SelectTrigger className="h-8 w-32 border-white/10 bg-white/5 text-xs text-white">
+                <SelectTrigger className="h-7 border-none bg-transparent text-xs font-semibold text-white focus:ring-0">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-gray-800 border-white/10 text-white">
@@ -265,7 +267,7 @@ export default function Dashboard() {
               variant="ghost"
               size="sm"
               onClick={handleLogout}
-              className="text-gray-400 hover:text-white hover:bg-white/10"
+              className="text-gray-400 hover:text-white hover:bg-white/10 rounded-xl transition-all"
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="me-2 h-4 w-4">
                 <path fillRule="evenodd" d="M3 4.25A2.25 2.25 0 0 1 5.25 2h5.5A2.25 2.25 0 0 1 13 4.25v2a.75.75 0 0 1-1.5 0v-2a.75.75 0 0 0-.75-.75h-5.5a.75.75 0 0 0-.75.75v11.5c0 .414.336.75.75.75h5.5a.75.75 0 0 0 .75-.75v-2a.75.75 0 0 1 1.5 0v2A2.25 2.25 0 0 1 10.75 18h-5.5A2.25 2.25 0 0 1 3 15.75V4.25Z" clipRule="evenodd" />
@@ -277,7 +279,7 @@ export default function Dashboard() {
         </header>
 
         {/* Page outlet */}
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className="flex-1 overflow-y-auto p-6 bg-gradient-to-b from-gray-950 via-gray-950 to-gray-900">
           <Outlet />
         </main>
       </div>

@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAcademicYear } from "@/contexts/AcademicYearContext";
@@ -16,10 +18,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-const TARGETS: { value: AnnouncementTarget; labelAr: string }[] = [
-  { value: "all", labelAr: "الجميع (All)" },
-  { value: "teacher", labelAr: "المعلمون فقط (Teachers Only)" },
-  { value: "student", labelAr: "الطلاب وأولياء الأمور (Students/Parents)" },
+const TARGETS: { value: AnnouncementTarget; label: string }[] = [
+  { value: "all", label: "All (Everyone)" },
+  { value: "teacher", label: "Teachers Only" },
+  { value: "student", label: "Students & Parents" },
 ];
 
 const emptyForm = () => ({
@@ -96,8 +98,8 @@ export default function Announcements() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-white">الإعلانات والملاحظات</h2>
-          <p className="text-sm text-gray-400">Announcements — {activeYear}</p>
+          <h2 className="text-2xl font-bold text-white">Announcements</h2>
+          <p className="text-sm text-gray-400">School Notices & Bulletins — {activeYear}</p>
         </div>
         <button onClick={openAdd} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/20 transition-all">
           + New Announcement
@@ -122,20 +124,23 @@ export default function Announcements() {
                 <div className="flex items-start justify-between">
                   <div>
                     <span className="inline-flex rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-0.5 text-[11px] font-medium text-indigo-400">
-                      {targetMeta?.labelAr || item.targetRole}
+                      {targetMeta?.label || item.targetRole}
                     </span>
-                    <h3 className="mt-2 text-xl font-bold text-white" dir="rtl">{item.title}</h3>
+                    <h3 className="mt-2 text-xl font-bold text-white">{item.title}</h3>
                     {item.titleEn && <p className="text-xs text-gray-400">{item.titleEn}</p>}
                   </div>
                   <button
                     onClick={() => handleDelete(item)}
-                    className="text-gray-500 hover:text-red-400 text-xs transition-colors"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-xs font-medium text-rose-400 hover:bg-rose-500/20 hover:text-rose-300 transition-all active:scale-95 shrink-0"
                   >
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
                     Delete
                   </button>
                 </div>
 
-                <div className="mt-4 text-sm text-gray-300 whitespace-pre-wrap" dir="rtl">
+                <div className="mt-4 text-sm text-gray-300 whitespace-pre-wrap">
                   {item.body}
                 </div>
                 {item.bodyEn && (
@@ -146,7 +151,7 @@ export default function Announcements() {
 
                 <div className="mt-6 flex items-center justify-between border-t border-white/5 pt-3 text-xs text-gray-500">
                   <span>Posted by: {item.createdByName || "Admin"}</span>
-                  <span>{item.createdAt ? new Date((item.createdAt as any).seconds * 1000).toLocaleDateString("ar-IQ") : "Just now"}</span>
+                  <span>{item.createdAt ? new Date((item.createdAt as any).seconds * 1000).toLocaleDateString("en-US") : "Just now"}</span>
                 </div>
               </div>
             );
@@ -158,56 +163,54 @@ export default function Announcements() {
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>New Announcement / إعلان جديد</DialogTitle>
+            <DialogTitle>New Announcement</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-2">
             <div>
-              <label className="block text-xs font-medium text-gray-300 mb-1">Target Audience / الفئة المستهدفة</label>
+              <label className="block text-xs font-medium text-gray-300 mb-1">Target Audience</label>
               <select
                 value={form.targetRole}
                 onChange={(e) => setForm({ ...form, targetRole: e.target.value as AnnouncementTarget })}
                 className="w-full rounded-lg border border-white/10 bg-gray-800 px-3 py-2 text-sm text-white outline-none"
               >
                 {TARGETS.map((t) => (
-                  <option key={t.value} value={t.value}>{t.labelAr}</option>
+                  <option key={t.value} value={t.value}>{t.label}</option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-300 mb-1">Title (Arabic) *</label>
+              <label className="block text-xs font-medium text-gray-300 mb-1">Title *</label>
               <input
-                dir="rtl"
-                placeholder="إعلان بشأن بداية الامتحانات الرسمية"
+                placeholder="Announcement Regarding Final Exams"
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
                 className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-300 mb-1">Title (English optional)</label>
+              <label className="block text-xs font-medium text-gray-300 mb-1">Sub-title / Note (Optional)</label>
               <input
-                placeholder="Announcement Regarding Final Exams"
+                placeholder="Important updates for all students"
                 value={form.titleEn}
                 onChange={(e) => setForm({ ...form, titleEn: e.target.value })}
                 className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-300 mb-1">Body (Arabic) *</label>
+              <label className="block text-xs font-medium text-gray-300 mb-1">Body *</label>
               <textarea
-                dir="rtl"
                 rows={4}
-                placeholder="تفاصيل الإعلان..."
+                placeholder="Announcement details..."
                 value={form.body}
                 onChange={(e) => setForm({ ...form, body: e.target.value })}
                 className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-300 mb-1">Body (English optional)</label>
+              <label className="block text-xs font-medium text-gray-300 mb-1">Secondary Note (Optional)</label>
               <textarea
-                rows={3}
-                placeholder="Announcement details in English..."
+                rows={2}
+                placeholder="Additional instructions..."
                 value={form.bodyEn}
                 onChange={(e) => setForm({ ...form, bodyEn: e.target.value })}
                 className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500"

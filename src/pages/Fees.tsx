@@ -165,7 +165,7 @@ export default function Fees() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-white">الرسوم الدراسية</h2>
+          <h2 className="text-2xl font-bold text-white">Fees</h2>
           <p className="text-sm text-gray-400">Fees — {activeYear} (IQD)</p>
         </div>
         <button onClick={openAdd} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/20 transition-all">
@@ -176,11 +176,11 @@ export default function Fees() {
       {/* Financial Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 p-5">
-          <p className="text-xs font-medium uppercase tracking-widest text-emerald-400">Paid / المحصّل</p>
+          <p className="text-xs font-medium uppercase tracking-widest text-emerald-400">Total Collected</p>
           <p className="mt-2 text-2xl font-bold text-white">{formatIQD(paidAmount)}</p>
         </div>
         <div className="rounded-2xl border border-indigo-500/30 bg-gradient-to-br from-indigo-500/20 to-indigo-600/10 p-5">
-          <p className="text-xs font-medium uppercase tracking-widest text-indigo-400">Total Billed / إجمالي المستحق</p>
+          <p className="text-xs font-medium uppercase tracking-widest text-indigo-400">Total Billed</p>
           <p className="mt-2 text-2xl font-bold text-white">{formatIQD(totalAmount)}</p>
         </div>
       </div>
@@ -199,20 +199,23 @@ export default function Fees() {
           className="rounded-lg border border-white/10 bg-gray-800 px-3 py-2 text-sm text-white outline-none"
         >
           <option value="all">All Statuses</option>
-          <option value="paid">Paid / مدفوع</option>
-          <option value="unpaid">Unpaid / غير مدفوع</option>
-          <option value="partial">Partial / مدفوع جزئياً</option>
+          <option value="paid">Paid</option>
+          <option value="unpaid">Unpaid</option>
+          <option value="partial">Partial</option>
         </select>
       </div>
 
       {/* Table */}
-      <div className="rounded-2xl border border-white/10 overflow-hidden bg-white/5">
-        <table className="w-full text-sm">
-          <thead className="border-b border-white/10 bg-white/5">
+      <div className="rounded-2xl border border-white/10 overflow-hidden bg-white/5 shadow-xl">
+        <table className="w-full text-sm text-left">
+          <thead className="border-b border-white/10 bg-gray-900/60 backdrop-blur">
             <tr>
-              {["Student", "Type", "Amount (IQD)", "Due Date", "Status", ""].map((h) => (
-                <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">{h}</th>
-              ))}
+              <th className="px-4 py-3.5 text-xs font-bold uppercase tracking-wider text-gray-300">Student</th>
+              <th className="px-4 py-3.5 text-xs font-bold uppercase tracking-wider text-gray-300">Type</th>
+              <th className="px-4 py-3.5 text-xs font-bold uppercase tracking-wider text-gray-300">Amount (IQD)</th>
+              <th className="px-4 py-3.5 text-xs font-bold uppercase tracking-wider text-gray-300">Due Date</th>
+              <th className="px-4 py-3.5 text-xs font-bold uppercase tracking-wider text-gray-300">Status</th>
+              <th className="px-4 py-3.5 text-right text-xs font-bold uppercase tracking-wider text-gray-300">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5">
@@ -225,21 +228,39 @@ export default function Fees() {
               const typeMeta = FEE_TYPES.find((t) => t.value === f.type);
               return (
                 <tr key={f.id} className="hover:bg-white/5 transition-colors">
-                  <td className="px-4 py-3 font-medium text-white">{f.studentName}</td>
-                  <td className="px-4 py-3 text-gray-400">{typeMeta?.labelAr || f.type}</td>
-                  <td className="px-4 py-3 font-bold text-emerald-400">{formatIQD(f.amount)}</td>
-                  <td className="px-4 py-3 text-gray-400 text-xs">{f.dueDate || "—"}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3.5 font-medium text-white">{f.studentName}</td>
+                  <td className="px-4 py-3.5 text-gray-400">{typeMeta?.label || f.type}</td>
+                  <td className="px-4 py-3.5 font-bold text-emerald-400 font-mono text-xs">{formatIQD(f.amount)}</td>
+                  <td className="px-4 py-3.5 text-gray-400 font-mono text-xs">{f.dueDate || "—"}</td>
+                  <td className="px-4 py-3.5">
                     <button
                       onClick={() => togglePaidStatus(f)}
-                      className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-transform active:scale-95 ${statusMeta.color}`}
+                      className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition-transform active:scale-95 ${statusMeta.color}`}
                     >
-                      {statusMeta.labelAr}
+                      {statusMeta.label}
                     </button>
                   </td>
-                  <td className="px-4 py-3 text-right">
-                    <button onClick={() => openEdit(f)} className="text-indigo-400 hover:text-indigo-300 mr-4 text-xs">Edit</button>
-                    <button onClick={() => handleDelete(f)} className="text-red-400 hover:text-red-300 text-xs">Delete</button>
+                  <td className="px-4 py-3.5 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => openEdit(f)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1 text-xs font-medium text-indigo-400 hover:bg-indigo-500/20 hover:text-indigo-300 transition-all active:scale-95"
+                      >
+                        <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                          <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                        </svg>
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDelete(f)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-xs font-medium text-rose-400 hover:bg-rose-500/20 hover:text-rose-300 transition-all active:scale-95"
+                      >
+                        <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -256,7 +277,7 @@ export default function Fees() {
           </DialogHeader>
           <div className="space-y-4 pt-2">
             <div>
-              <label className="block text-xs font-medium text-gray-300 mb-1">Student (Searchable Combobox) *</label>
+              <label className="block text-xs font-medium text-gray-300 mb-1">Student *</label>
               <Combobox
                 value={form.studentId}
                 onChange={(val) => setForm({ ...form, studentId: val })}
@@ -272,7 +293,7 @@ export default function Fees() {
                 className="w-full rounded-lg border border-white/10 bg-gray-800 px-3 py-2 text-sm text-white outline-none"
               >
                 {FEE_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>{t.labelAr} ({t.label})</option>
+                  <option key={t.value} value={t.value}>{t.label}</option>
                 ))}
               </select>
             </div>
@@ -305,7 +326,7 @@ export default function Fees() {
                   className="w-full rounded-lg border border-white/10 bg-gray-800 px-3 py-2 text-sm text-white outline-none"
                 >
                   {FEE_STATUSES.map((s) => (
-                    <option key={s.value} value={s.value}>{s.labelAr}</option>
+                    <option key={s.value} value={s.value}>{s.label}</option>
                   ))}
                 </select>
               </div>

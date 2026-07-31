@@ -113,11 +113,11 @@ export default function Signup() {
               {/* School Info */}
               <div className="space-y-1.5">
                 <Label htmlFor="school-name" className="text-gray-300">
-                  School Name (English)
+                  School Name *
                 </Label>
                 <Input
                   id="school-name"
-                  placeholder="Al-Rasheed Secondary School"
+                  placeholder="Al-Rasheed High School"
                   value={schoolName}
                   onChange={(e) => setSchoolName(e.target.value)}
                   required
@@ -127,12 +127,11 @@ export default function Signup() {
 
               <div className="space-y-1.5">
                 <Label htmlFor="school-name-ar" className="text-gray-300">
-                  School Name (Arabic) — اختياري
+                  Secondary / Local School Name (Optional)
                 </Label>
                 <Input
                   id="school-name-ar"
-                  dir="rtl"
-                  placeholder="مدرسة الرشيد الثانوية"
+                  placeholder="Al-Rasheed Secondary"
                   value={schoolNameAr}
                   onChange={(e) => setSchoolNameAr(e.target.value)}
                   className="border-white/10 bg-white/5 text-white placeholder:text-gray-600 focus-visible:ring-indigo-500"

@@ -133,7 +133,7 @@ export default function Grades() {
       {/* Controls */}
       <div className="flex flex-wrap gap-4">
         <div className="flex-1 min-w-44">
-          <label className="block text-xs text-gray-400 mb-1">Class (Combobox)</label>
+          <label className="block text-xs text-gray-400 mb-1">Class</label>
           <Combobox
             value={selectedClass}
             onChange={setSelectedClass}
@@ -142,7 +142,7 @@ export default function Grades() {
           />
         </div>
         <div className="flex-1 min-w-44">
-          <label className="block text-xs text-gray-400 mb-1">Subject (Combobox)</label>
+          <label className="block text-xs text-gray-400 mb-1">Subject</label>
           <Combobox
             value={selectedSubject}
             onChange={setSelectedSubject}
