@@ -1,0 +1,35 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isSameSchool(schoolId) {
+      return isAuthenticated() && getUserData().schoolId == schoolId;
+    }
+
+    // User profile: User can read and write their own profile document
+    match /users/{uid} {
+      allow read, write: if isAuthenticated() && request.auth.uid == uid;
+    }
+
+    // School document: Accessible to authenticated members of that school
+    match /schools/{schoolId} {
+      allow read: if isSameSchool(schoolId);
+      allow create: if isAuthenticated();
+      allow update, delete: if isSameSchool(schoolId) && getUserData().role in ['admin', 'superadmin'];
+
+      // All subcollections inside a school (/schools/{schoolId}/*)
+      match /{allSubcollections=**} {
+        allow read, write: if isSameSchool(schoolId);
+      }
+    }
+  }
+}
