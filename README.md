@@ -1,157 +1,217 @@
-# EduSaaS — A School Management System
-### Case Study: Engineering Decisions That Shaped a Production-Grade SaaS
+# EduSaaS — Multi-Tenant School Management System
+
+A school management platform built on React 19, TypeScript, Tailwind CSS v4, and Cloud Firestore. It handles student records, teacher assignments, attendance, grades, and fee tracking across multiple academic years, with full Arabic/English support and role-based access for four user types.
 
 ---
 
-## The Starting Point
+## Architecture Overview
 
-The brief was straightforward: build a school management system. The kind of thing where admins enter student records, teachers log grades, and someone checks attendance. Simple enough to prototype in a weekend, but the real challenge surfaced immediately — *what does "school management" actually mean for a real institution?*
-
-The answer turned out to be: conflicting data ownership, language politics, four distinct user personas who must see fundamentally different interfaces, multi-year academic cycles, and a financial layer sensitive enough that a teacher browsing fees would be a compliance failure. The weekend prototype became a properly engineered system.
-
-This document describes the decisions that mattered — not what the system does, but *why it works the way it does*.
-
----
-
-## The Architecture Problem Nobody Talks About
-
-Early in the build, the codebase had a `Dashboard.tsx` that was doing too much. It contained the sidebar, the navbar, the navigation items, the user dropdown, the auth redirect logic, the sidebar open/close state, and the `<Outlet>` for page content — 300+ lines in a single component. Adding a new nav item meant touching the same file as adding a logout button. Changing the auth logic meant scrolling past the sidebar CSS.
-
-The fix wasn't about the code being ugly. It was about *what changes together should live together*. Three questions clarified the split:
-
-1. What changes when a new page is added? — Only `routes/index.tsx`
-2. What changes when the auth flow changes? — Only `AppLayout.tsx`
-3. What changes when the nav design changes? — Only `Sidebar.tsx`
-
-The result was a strict layering rule: `App.tsx` holds providers and nothing else. `routes/index.tsx` is a flat list of `<Route>` declarations. `AppLayout.tsx` owns auth checking and sidebar state. `Sidebar.tsx` owns its own data needs. Each file has one reason to change.
-
-There was a secondary benefit: `ProtectedRoute.tsx` was deleted. The old pattern had two nested wrappers — one for auth checking, one for layout — both rendering `<Outlet>`. They were doing the same job. Merging them into `AppLayout` removed an entire layer of indirection from every protected route.
-
----
-
-## Role-Based Access: Why Two Layers
-
-The system has four roles: Superadmin, Admin, Teacher, Student. The naive approach is to check the role in each component and conditionally render. This works until it doesn't — when a new page is added, someone forgets to add the check, and a teacher can suddenly delete students.
-
-The approach here uses two enforced layers simultaneously, not as redundancy but because they protect different things.
-
-**The frontend layer** — a `<RoleGuard permission="...">` component reading from a centralized `PERMISSIONS` map — prevents users from *seeing* controls they shouldn't touch. This is about UX, not security. A delete button that disappears for teachers is a better experience than a button that throws an error.
-
-**The Firestore security rules layer** prevents unauthorized *writes* even if the frontend guard is somehow bypassed. A teacher account genuinely cannot write to the `fees` collection — the database rejects it at the network level, regardless of what the UI renders.
-
-The frontend guard is for experience. The security rules are for correctness. Relying on only one of them would be wrong either way.
-
-The role system extends into the visual design too. The sidebar avatar uses a different gradient per role — amber for Superadmin, indigo for Admin, emerald for Teacher, sky for Student. This wasn't aesthetic decoration; it came from a practical observation during testing: when switching between demo accounts to verify permission behavior, it was impossible to tell which session you were in without looking at the profile dropdown. The color-coded avatar solved that instantly.
-
----
-
-## The Seeding Bug That Could Have Gone Unnoticed
-
-During development, the seed script was creating four demo accounts in sequence. After each run, the tests would fail in unpredictable ways — some dashboard data would load, some wouldn't, and the error messages pointed nowhere useful.
-
-The bug: Firebase's `createUserWithEmailAndPassword` **automatically signs in the newly created user**. After creating the student account last, the application was authenticated as that student. The subsequent page loads were fetching data scoped to a student who had no school data properly seeded yet.
-
-This could have been "fixed" by signing back in as admin after seeding, but that's a workaround, not a solution — it still means the admin's session was interrupted and the UX of the seed page would be broken.
-
-The real fix was creating a **secondary Firebase app instance** — a completely isolated Firebase connection that handles all user creation without touching the primary app's authentication state at all:
-
-```ts
-const secondaryApp  = initializeApp(firebaseConfig, `seed-helper-${Date.now()}`);
-const secondaryAuth = getAuth(secondaryApp);
-
-// All demo accounts created through secondaryAuth
-// Primary auth.currentUser never changes
-
-await deleteApp(secondaryApp);
+```
+                             ┌───────────────────────────────┐
+                             │       React 19 Root App       │
+                             │  (Providers: Auth, Year, i18n) │
+                             └───────────────┬───────────────┘
+                                             │
+                                ┌────────────┴────────────┐
+                                │       AppLayout         │
+                                │ (Auth Guard + Shell UI) │
+                                └──┬───────────────────┬──┘
+                                   │                   │
+                     ┌─────────────┴─────┐       ┌─────┴─────────────┐
+                     │    Sidebar.tsx    │       │    Navbar.tsx     │
+                     │ (Role-Aware Nav)  │       │(Year/Theme/Lang)  │
+                     └───────────────────┘       └───────────────────┘
+                                           │
+                                ┌──────────┴──────────┐
+                                │   React Router v7   │
+                                │   <Outlet /> Views  │
+                                └──────────┬──────────┘
+                                           │
+              ┌────────────────────────────┼────────────────────────────┐
+              ▼                            ▼                            ▼
+     ┌─────────────────┐          ┌─────────────────┐          ┌─────────────────┐
+     │  <RoleGuard />  │          │ <DataWrapper /> │          │ <DeleteDialog />│
+     │  (UI Security)  │          │ (4-State Async) │          │(Portaled Modal) │
+     └─────────────────┘          └─────────────────┘          └─────────────────┘
 ```
 
-The secondary app is created, used, and destroyed within the seed operation. The admin who triggered the seed is still logged in when it completes. This is the kind of bug that's invisible until a demo fails in front of someone important.
+---
+
+## Technical Decisions
+
+### 1. Component Decomposition
+
+Early on, `AppLayout.tsx` was doing too much — it held auth logic, the sidebar, the nav, route rendering, and responsive state all in one file. Adding a nav item meant touching the same file as auth redirects.
+
+The split I landed on:
+
+- **`App.tsx`**: Mounts providers (`AuthProvider`, `AcademicYearProvider`, `ThemeProvider`, `TranslationProvider`) and nothing else.
+- **`AppLayout.tsx`**: Handles auth checking, redirects unauthenticated users to `/login`, and owns sidebar open/close state and the responsive shell.
+- **`routes/index.tsx`**: Flat list of route declarations. Adding a page means only touching this file.
+- **`Sidebar.tsx` / `Navbar.tsx`**: Each reads from context directly — no props passed down from the layout.
+
+This also let me delete `ProtectedRoute.tsx`. There were two nested wrappers both rendering `<Outlet>`, doing the same job. Merging them into `AppLayout` removed a layer of indirection from every protected route.
 
 ---
 
-## Internationalization as a Layout Problem
+### 2. Role-Based Access Control
 
-Adding Arabic wasn't a translation job. It was a layout architecture decision.
+The system has four roles: Superadmin, Admin, Teacher, Student. I chose to enforce permissions at two levels rather than one, because they protect different things.
 
-Arabic text reads right-to-left, which means the sidebar should be on the right, navigation flows in the opposite direction, and every padded, margined, or absolutely-positioned element needs to mirror. A simple `translate()` dictionary doesn't solve this — the entire spatial reasoning of the UI needs to invert.
+```
+[User Action] ──► [Layer 1: Frontend <RoleGuard>] ──► [Layer 2: Firestore Security Rules] ──► [Database]
+                    (Hides UI for unauthorized roles)       (Blocks unauthorized writes at DB level)
+```
 
-The solution used Tailwind CSS's **logical CSS properties** throughout: `ps-` (padding-start) instead of `pl-`, `ms-` (margin-start) instead of `ml-`, `border-e` instead of `border-r`. These properties are direction-relative — they automatically flip when `dir="rtl"` is set on the document root. This meant language switching required exactly one line:
+- **`<RoleGuard permission="...">`**: Reads from a centralized permission map. Unauthorized buttons and routes simply don't render — no error messages for the user, no guessing.
+- **Firestore security rules**: Even if someone bypasses the UI (e.g., making direct API calls), the database rejects writes that don't match the user's token claims. A teacher account cannot write to the `fees` collection at the network level.
+
+The frontend guard handles UX. The security rules handle correctness. You need both — one without the other is incomplete.
+
+One side effect: sidebar avatars are color-coded by role (Amber = Superadmin, Indigo = Admin, Emerald = Teacher, Sky = Student). This came out of testing, not design — when switching between demo accounts to verify permission behavior, it was hard to tell which session you were in. The avatar color solved that immediately.
+
+---
+
+### 3. Multi-Year Academic Partitioning
+
+Schools run in fixed academic years (e.g., 2025–2026). Old grades, attendance records, and paid invoices can't be mixed into the current year's data or overwritten when a new term starts.
+
+I handled this with `AcademicYearContext`, which scopes every Firestore query to the selected year:
+
+```ts
+where("academicYear", "==", activeYear)
+```
+
+Switching the active year in the top nav updates all queries across the app immediately, no page reload. Historical years are read-only; current years accept live writes.
+
+---
+
+### 4. Arabic / English RTL Support
+
+Adding Arabic wasn't just translating strings — the entire spatial layout has to flip. The sidebar moves from left to right, padding/margin directions invert, borders swap sides.
+
+Rather than maintaining two sets of CSS, I used Tailwind's logical property utilities throughout:
+
+- `ps-*` / `pe-*` instead of `pl-*` / `pr-*`
+- `ms-*` / `me-*` instead of `ml-*` / `mr-*`
+- `border-s-*` / `border-e-*` instead of `border-l-*` / `border-r-*`
+
+These are direction-relative — they resolve to the correct physical side based on whatever `dir` attribute is on the document root. Switching languages is then one line:
 
 ```ts
 document.documentElement.setAttribute("dir", lang === "ar" ? "rtl" : "ltr");
 ```
 
-The sidebar handles its own RTL logic — it reads the current language from context and moves from `left-0 border-r` to `right-0 border-l`. The language toggle in the navbar shows "عربي" when in English mode and "EN" when in Arabic mode — because the label should tell you what you're switching *to*, not what you're currently using.
+The layout flips automatically. No conditional class lists, no duplicate CSS.
 
 ---
 
-## Multi-Year Academic Partitioning
+### 5. Loading States
 
-Schools do not operate on an arbitrary timeline; their lifecycle revolves around distinct academic years (e.g., September 2025 to June 2026). When a new academic term starts, historical grades, tuition receipts, and attendance records cannot simply be wiped or mixed into current rosters.
-
-The architecture handles this via a top-level `AcademicYearContext` that binds every query (classes, students, fees, attendance, grades) to an `academicYear` key. Switching the active year in the top navigation bar immediately updates the Firestore query filters across the dashboard without reloading the page. Historical audits remain immutable, while current operations reflect active rosters.
-
----
-
-## Loading States as a Design System Problem
-
-The first iteration of every page used the same pattern:
+The first version of every page had the same pattern:
 
 ```tsx
 if (loading) return "..."
 ```
 
-Three dots. Scattered across 40+ stat values, chart containers, and table bodies. This looked broken, felt broken, and meant there was no consistent visual language for "data is on its way."
+Three dots everywhere — no consistent visual language, no indication of what shape the data would be.
 
-The refactor extracted three components:
+I extracted three components to address this:
 
-**`Skeleton.tsx`** provides shimmer placeholders in the exact shape of what they're replacing — a 32×96px shimmer where a number will appear, a 180px tall block where a chart will render. The shimmer matches the content's dimensions so the layout doesn't jump when data loads.
+**`<DataWrapper />`**
 
-**`DataWrapper.tsx`** eliminates the `if (loading) / if (error) / if (empty)` chain that every page was reimplementing independently. Any page that fetches data wraps its output in `<DataWrapper loading error empty skeleton>`. The four states — loading, error, empty, data — are handled consistently once, everywhere.
+Every page that fetches data was reimplementing the same `loading / error / empty / data` conditional chain. `DataWrapper` handles all four states once, in one place:
 
-**`DeleteDialog.tsx`** replaced all `window.confirm()` calls. The browser's native confirm dialog has no loading state — after clicking "OK", the UI appears frozen while the Firestore delete completes. The custom dialog shows a spinner on the confirm button, closes properly on `Escape` and backdrop click, and positions focus correctly for keyboard navigation.
+```tsx
+<DataWrapper
+  loading={loading}
+  error={error}
+  empty={students.length === 0}
+  emptyMessage="No students registered yet"
+  skeleton={<SkeletonTableRow cols={7} />}
+  onRetry={loadData}
+>
+  <StudentTable data={students} />
+</DataWrapper>
+```
 
-These three components don't add features. They add *consistency*, which at a certain codebase size is more valuable.
+**`<Skeleton />`**
+
+Shimmer placeholders that match the dimensions of the content they replace — stat cards, tables, charts, profile banners. The layout doesn't shift when data arrives because the placeholder takes up the same space.
+
+**`<DeleteDialog />`**
+
+Replaced all `window.confirm()` calls. The browser's default confirm has no loading state, so the UI looks frozen while a Firestore delete is in flight. The custom dialog renders via `createPortal(..., document.body)` at `z-[100]` (so it sits above the sidebar), shows a spinner on the confirm button during deletion, locks body scroll, and closes on `Escape` or backdrop click.
 
 ---
 
-## Unified Visual Language: Lucide Icons & Dark Mode Color Grading
+### 6. Icons and Dark Mode
 
-A dashboard littered with mismatched emoji icons and disparate SVG snippets immediately betrays amateur execution. The visual layer was unified around two key refinements:
+All emojis and ad-hoc SVGs were replaced with **Lucide React** to get a consistent stroke width and sizing across the app (`14px`–`20px`, `1.75px`–`2.0px` stroke).
 
-### 1. Cohesive Iconography with Lucide React
-All inline SVGs and ad-hoc emojis across the sidebar, navigation bar, stat cards, dialogs, and table actions were migrated to **Lucide React**. Every icon uses a consistent stroke width (`1.75`–`2.0px`), unified optical sizing (`h-4 w-4` or `h-5 w-5`), and inherits semantic currentColor styling.
+For dark mode, I used OKLCH color tokens instead of flat grays. Background is `#0d0d14`, cards sit on `oklch(0.14 ...)`, and borders use `rgba(255,255,255,0.06–0.08)`. This gives visible depth between layers without harsh contrast.
 
-### 2. High-Fidelity Dark Mode (OKLCH Color Space)
-Generic dark modes often rely on harsh `#000000` backgrounds with high-contrast `#ffffff` text, causing severe eye strain. The theme architecture uses tailored OKLCH color tokens and a deep midnight background (`#0d0d14`):
-- **Layered Elevation:** Cards sit on `oklch(0.14 ...)` against the `#0d0d14` viewport background, providing clear visual separation without heavy borders.
-- **Subtle Boundaries:** Hairline borders (`rgba(255, 255, 255, 0.06 - 0.08)`) create subtle edge definitions.
-- **Chart Harmony:** Recharts SVG elements (grids, axes, tooltips) dynamically read `isDark` from `ThemeContext` and compute explicit stroke and fill values, ensuring charts match the deep palette seamlessly.
+Recharts SVG elements don't inherit CSS custom properties, so chart components read `isDark` from `ThemeContext` directly and pass explicit color values for axis ticks, grid lines, and tooltip backgrounds.
 
 ---
 
-## What Would Be Done Differently
+### 7. Database Seeding
 
-**Code splitting.** The production bundle is ~1.9MB uncompressed. Recharts and SheetJS together account for the majority of it. `React.lazy()` with dynamic imports on page components would cut the initial load to under 300KB — the rest loads only when navigated to.
+`createUserWithEmailAndPassword` in Firebase automatically signs in the new account, which would overwrite the current admin session during seeding. To avoid that, the seeder creates a temporary secondary Firebase app instance, provisions accounts through it, then deletes it:
 
-**Real-time listeners.** Every data fetch in the system is a one-time `getDocs()` call. For attendance recording especially, where multiple teachers might be marking the same class simultaneously, `onSnapshot()` listeners would prevent stale reads. The architecture already supports it — `useAuth` provides `schoolId`, the data layer is centralized — it's purely an implementation gap.
+```ts
+const secondaryApp  = initializeApp(firebaseConfig, `seed-worker-${Date.now()}`);
+const secondaryAuth = getAuth(secondaryApp);
 
-**The `/seed` route is public.** Anyone who knows the URL can seed demo data into the system. This should be behind an environment variable check or removed entirely before production deployment. It exists as a developer convenience and was never hardened.
+await createUserWithEmailAndPassword(secondaryAuth, email, password);
 
-**Pagination.** All collection fetches return the full dataset. For a school with 1,000+ students, `fetchCollection("students")` becomes a performance problem. Cursor-based pagination with Firestore's `startAfter()` would solve this without structural changes.
+await deleteApp(secondaryApp);
+```
+
+The primary auth state is never touched. The `/seed` route creates a full demo environment including classes, students, teachers, grades, attendance, and fee records.
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| UI Framework | React 19 + TypeScript |
-| Build Tool | Vite 8 |
-| Styling | Tailwind CSS v4 — OKLCH tokens, logical properties, class-based dark mode |
-| Database | Firebase Firestore — multi-tenant `/schools/{id}/` |
-| Auth | Firebase Authentication |
-| Iconography | Lucide React (`lucide-react`) |
-| Charts | Recharts — theme-adaptive via JavaScript props |
-| Export | SheetJS (`xlsx`) |
-| i18n | Custom context — Arabic / English, RTL/LTR |
+| Layer | Technology | Notes |
+|---|---|---|
+| Core Framework | React 19 + TypeScript | |
+| Build Tool | Vite 8 + Rolldown | |
+| Styling | Tailwind CSS v4 | OKLCH tokens, logical properties, class-based dark mode |
+| Database | Firebase Firestore | Multi-tenant `/schools/{id}/` collection structure |
+| Authentication | Firebase Auth | Token-based, claims used in Firestore rules |
+| Charts | Recharts | Receives theme colors via JS props |
+| Excel Export | SheetJS (`xlsx`) | Client-side, no backend needed |
+| Icons | Lucide React | |
+| Localization | Custom context | Arabic + English, RTL/LTR switching |
+
+---
+
+## Running Locally
+
+```bash
+git clone https://github.com/mortada335/school-management-system.git
+cd school-management-system
+pnpm install
+pnpm dev
+```
+
+Navigate to `/seed` first to populate the database with demo data, then log in with any of these accounts:
+
+| Role | Email | Password | Access |
+|---|---|---|---|
+| Superadmin | `superadmin@demo.school` | `Demo@12345` | Everything |
+| Admin | `admin@demo.school` | `Demo@12345` | Students, teachers, fees, classes |
+| Teacher | `teacher@demo.school` | `Demo@12345` | Attendance, grades, class rosters |
+| Student | `student@demo.school` | `Demo@12345` | Own records only |
+
+---
+
+## What I'd Change
+`
+**Code splitting.** The production bundle is ~1.9MB uncompressed. Recharts and SheetJS are the main contributors. Adding `React.lazy()` with dynamic imports per route would cut initial load significantly — those libraries only load when the user navigates to a page that needs them.
+
+**Real-time listeners.** Every fetch is a one-time `getDocs()` call. For attendance in particular, where two teachers might be recording the same class at the same time, this means stale reads. Switching to `onSnapshot()` would fix it — the auth and data layer already support it, it's just not implemented.
+
+**Pagination.** All collection queries return full datasets. For a school with hundreds of students, `fetchCollection("students")` will get slow. Firestore's `startAfter()` cursor pagination would solve this without structural changes to the data layer.

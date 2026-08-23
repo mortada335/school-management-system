@@ -20,6 +20,10 @@ import {
 } from "@/components/ui/dialog";
 import { Combobox } from "@/components/ui/combobox";
 import RoleGuard from "@/components/RoleGuard";
+import DeleteDialog from "@/components/ui/DeleteDialog";
+import DataWrapper from "@/components/ui/DataWrapper";
+import { SkeletonCard, SkeletonTableRow } from "@/components/ui/Skeleton";
+import { Trash2 } from 'lucide-react';
 
 const GRADES = Array.from({ length: 12 }, (_, i) => i + 1);
 const SECTIONS = ["A", "B", "C", "D", "E", "F"];
@@ -57,6 +61,8 @@ export default function Classes() {
   const [editing, setEditing] = useState<Class | null>(null);
   const [form, setForm] = useState(emptyForm());
   const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Class | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     if (!schoolId) return;
@@ -138,13 +144,21 @@ export default function Classes() {
     }
   };
 
-  const handleDelete = async (c: Class) => {
-    if (!schoolId || !confirm(`Delete class "${c.name}"?`)) return;
+  const handleDelete = (c: Class) => {
+    setDeleteTarget(c);
+  };
+
+  const confirmDelete = async () => {
+    if (!schoolId || !deleteTarget) return;
+    setDeleting(true);
     try {
-      await deleteDocument(schoolId, "classes", c.id);
+      await deleteDocument(schoolId, "classes", deleteTarget.id);
+      setDeleteTarget(null);
       await load();
     } catch (err) {
       console.error(err);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -193,123 +207,162 @@ export default function Classes() {
         </div>
       </div>
 
-      {loading ? (
-        <div className="py-20 text-center text-gray-500">{t("loading")}</div>
-      ) : classes.length === 0 ? (
-        <div className="rounded-2xl border border-gray-200 bg-white dark:border-white/10 dark:bg-white/5 py-20 text-center text-gray-500 dark:text-gray-400">{t("noClassesFound")}</div>
-      ) : viewMode === "card" ? (
-        <div className="space-y-6">
-          {Object.entries(gradeGroups).sort(([a], [b]) => Number(a) - Number(b)).map(([grade, gradeClasses], gi) => (
-            <div key={grade}>
-              <h3 className="text-xs sm:text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-3">
-                {t("grade")} {grade}
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {gradeClasses.map((c) => {
-                  const count = studentCounts[c.id] ?? 0;
-                  const cap = c.capacity ?? 35;
-                  const fillPct = Math.min(100, Math.round((count / cap) * 100));
-                  const colorClass = GRADE_COLORS[gi % GRADE_COLORS.length];
-                  return (
-                    <div key={c.id} className={`rounded-2xl border p-4 sm:p-5 shadow-xs hover:shadow-md transition-all ${colorClass}`}>
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <p className="font-bold text-gray-900 dark:text-white text-base sm:text-lg">{c.name}</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{c.nameEn}</p>
+      <DataWrapper
+        loading={loading}
+        empty={classes.length === 0}
+        emptyMessage={lang === "ar" ? "لا توجد صفوف دراسية لهذا العام الدراسي." : "No classes found for this academic year."}
+        skeleton={
+          viewMode === "card" ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <SkeletonCard key={i} className="h-44" />
+              ))}
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xs dark:border-white/10 dark:bg-white/5">
+              <table className="w-full text-left text-sm">
+                <tbody className="divide-y divide-gray-100 dark:divide-white/5">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <SkeletonTableRow key={i} cols={7} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        }
+      >
+        {viewMode === "card" ? (
+          <div className="space-y-8">
+            {Object.entries(gradeGroups).map(([gradeStr, gradeClasses]) => (
+              <div key={gradeStr}>
+                <div className="flex items-center gap-3 mb-3">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600 text-xs font-bold text-white shadow-xs">
+                    {gradeStr}
+                  </span>
+                  <h3 className="text-sm sm:text-base font-bold text-gray-800 dark:text-gray-200">
+                    {t("grade")} {gradeStr}
+                  </h3>
+                  <span className="text-xs text-gray-400 font-medium">({gradeClasses.length} {t("classes")})</span>
+                  <div className="flex-1 h-px bg-gray-200 dark:bg-white/10" />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {gradeClasses.map((c) => {
+                    const count = studentCounts[c.id] ?? 0;
+                    const cap = c.capacity ?? 35;
+                    const fillPct = Math.min(100, Math.round((count / cap) * 100));
+                    const colorClass = GRADE_COLORS[(c.grade - 1) % GRADE_COLORS.length];
+                    return (
+                      <div
+                        key={c.id}
+                        className={`rounded-2xl border p-4 sm:p-5 transition-all hover:shadow-md ${colorClass}`}
+                      >
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <span className="text-[10px] font-bold uppercase tracking-wider opacity-60">
+                              {c.schedule === "afternoon" ? t("afternoon") : t("morning")} {t("shift")}
+                            </span>
+                            <h4 className="text-base sm:text-lg font-bold mt-0.5">{c.name}</h4>
+                            <p className="text-xs opacity-75 font-medium">{c.teacherName ? `👨‍🏫 ${c.teacherName}` : t("noTeacherAssigned")}</p>
+                          </div>
+                          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-black/5 dark:bg-white/10 text-sm font-bold shadow-2xs">
+                            {c.section}
+                          </span>
                         </div>
-                        <div className="text-xl sm:text-2xl">{c.grade <= 6 ? "📚" : "🎓"}</div>
-                      </div>
 
-                      <div className="mt-4 space-y-2">
-                        <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
-                          <span>👩‍🏫 {c.teacherName || "—"}</span>
-                          <span>🚪 {c.room || "—"}</span>
+                        {c.room && (
+                          <p className="mt-2 text-xs opacity-60 flex items-center gap-1">
+                            🚪 {t("room")} {c.room}
+                          </p>
+                        )}
+
+                        <div className="mt-4 space-y-1.5">
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="text-gray-600 dark:text-gray-400">{t("studentCount")}: <span className="font-semibold text-gray-900 dark:text-white">{count}</span>/{cap}</span>
+                            <span className="text-gray-600 dark:text-gray-400">{fillPct}%</span>
+                          </div>
+                          <div className="h-2 w-full rounded-full bg-black/10 dark:bg-black/20 overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-indigo-600 dark:bg-white/40 transition-all"
+                              style={{ width: `${fillPct}%` }}
+                            />
+                          </div>
                         </div>
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="text-gray-600 dark:text-gray-400">{t("studentCount")}: <span className="font-semibold text-gray-900 dark:text-white">{count}</span>/{cap}</span>
-                          <span className="text-gray-600 dark:text-gray-400">{fillPct}%</span>
-                        </div>
-                        <div className="h-2 w-full rounded-full bg-black/10 dark:bg-black/20 overflow-hidden">
-                          <div
-                            className="h-full rounded-full bg-indigo-600 dark:bg-white/40 transition-all"
-                            style={{ width: `${fillPct}%` }}
-                          />
+
+                        <div className="mt-4 flex gap-2">
+                          <RoleGuard permission="manage:classes">
+                            <button
+                              onClick={() => openEdit(c)}
+                              className="flex-1 rounded-lg bg-white/80 dark:bg-white/10 px-2 py-1.5 text-xs font-medium text-gray-800 dark:text-white border border-black/5 dark:border-transparent hover:bg-white dark:hover:bg-white/20 transition-all shadow-2xs"
+                            >
+                              ✏️ {t("edit")}
+                            </button>
+                            <button
+                              onClick={() => handleDelete(c)}
+                              className="rounded-lg bg-rose-500/10 px-2 py-1.5 text-xs font-medium text-rose-600 dark:bg-rose-500/20 dark:text-rose-400 hover:bg-rose-500/20 dark:hover:bg-rose-500/30 transition-all"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </RoleGuard>
                         </div>
                       </div>
-
-                      <div className="mt-4 flex gap-2">
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-gray-200 bg-white overflow-x-auto shadow-sm dark:border-white/10 dark:bg-white/5">
+            <table className="w-full text-xs sm:text-sm text-left min-w-[600px]">
+              <thead className="border-b border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-gray-900/60">
+                <tr>
+                  <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("className")}</th>
+                  <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("grade")}</th>
+                  <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("section")}</th>
+                  <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("homeroomTeacher")}</th>
+                  <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("studentCount")}</th>
+                  <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("room")}</th>
+                  <th className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("actions")}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-white/5">
+                {classes.map((c) => (
+                  <tr key={c.id} className="hover:bg-gray-50/80 dark:hover:bg-white/5 transition-colors">
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{c.name}</td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300 font-mono text-xs">{t("grade")} {c.grade}</td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300 font-mono text-xs">{c.section}</td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{c.teacherName || "—"}</td>
+                    <td className="px-4 py-3">
+                      <span className="font-semibold text-gray-900 dark:text-white">{studentCounts[c.id] ?? 0}</span>
+                      <span className="text-gray-400 text-xs">/{c.capacity ?? 35}</span>
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs">{c.room || "—"}</td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-2">
                         <RoleGuard permission="manage:classes">
                           <button
                             onClick={() => openEdit(c)}
-                            className="flex-1 rounded-lg bg-white/80 dark:bg-white/10 px-2 py-1.5 text-xs font-medium text-gray-800 dark:text-white border border-black/5 dark:border-transparent hover:bg-white dark:hover:bg-white/20 transition-all shadow-2xs"
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-400 dark:hover:bg-indigo-500/20 transition-all"
                           >
                             ✏️ {t("edit")}
                           </button>
                           <button
                             onClick={() => handleDelete(c)}
-                            className="rounded-lg bg-rose-500/10 px-2 py-1.5 text-xs font-medium text-rose-600 dark:bg-rose-500/20 dark:text-rose-400 hover:bg-rose-500/20 dark:hover:bg-rose-500/30 transition-all"
+                            className="flex justify-between items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-400 dark:hover:bg-rose-500/20 transition-all"
                           >
-                            🗑
+                            <Trash2 size={14} />
+                            {t("delete")}
                           </button>
                         </RoleGuard>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="rounded-2xl border border-gray-200 bg-white overflow-x-auto shadow-sm dark:border-white/10 dark:bg-white/5">
-          <table className="w-full text-xs sm:text-sm text-left min-w-[600px]">
-            <thead className="border-b border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-gray-900/60">
-              <tr>
-                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("className")}</th>
-                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("grade")}</th>
-                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("section")}</th>
-                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("homeroomTeacher")}</th>
-                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("studentCount")}</th>
-                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("room")}</th>
-                <th className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("actions")}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-white/5">
-              {classes.map((c) => (
-                <tr key={c.id} className="hover:bg-gray-50/80 dark:hover:bg-white/5 transition-colors">
-                  <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{c.name}</td>
-                  <td className="px-4 py-3 text-gray-600 dark:text-gray-300 font-mono text-xs">{t("grade")} {c.grade}</td>
-                  <td className="px-4 py-3 text-gray-600 dark:text-gray-300 font-mono text-xs">{c.section}</td>
-                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{c.teacherName || "—"}</td>
-                  <td className="px-4 py-3">
-                    <span className="font-semibold text-gray-900 dark:text-white">{studentCounts[c.id] ?? "..."}</span>
-                    <span className="text-gray-400 text-xs">/{c.capacity ?? 35}</span>
-                  </td>
-                  <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs">{c.room || "—"}</td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <RoleGuard permission="manage:classes">
-                        <button
-                          onClick={() => openEdit(c)}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-400 dark:hover:bg-indigo-500/20 transition-all"
-                        >
-                          ✏️ {t("edit")}
-                        </button>
-                        <button
-                          onClick={() => handleDelete(c)}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-400 dark:hover:bg-rose-500/20 transition-all"
-                        >
-                          🗑 {t("delete")}
-                        </button>
-                      </RoleGuard>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </DataWrapper>
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent>
@@ -390,6 +443,18 @@ export default function Classes() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteDialog
+        open={!!deleteTarget}
+        title={t("deleteClass")}
+        description={deleteTarget ? `${t("deleteConfirmMsg")} "${deleteTarget.name}"` : undefined}
+        confirmLabel={String(t("delete"))}
+        cancelLabel={String(t("cancel"))}
+        loading={deleting}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

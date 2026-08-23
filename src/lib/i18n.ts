@@ -226,11 +226,18 @@ const translations: Record<string, Record<Lang, string>> = {
   expiresAt:         { ar: "تنتهي في",          en: "Expires" },
 
   // ── Auth ──
-  signIn:            { ar: "تسجيل الدخول",      en: "Sign In" },
-  signOut:           { ar: "تسجيل الخروج",      en: "Sign Out" },
-  signUp:            { ar: "إنشاء حساب",        en: "Sign Up" },
-  emailLabel:        { ar: "البريد الإلكتروني", en: "Email" },
-  password:          { ar: "كلمة المرور",       en: "Password" },
+  signIn:            { ar: "تسجيل الدخول",                        en: "Sign In" },
+  signOut:           { ar: "تسجيل الخروج",                        en: "Sign Out" },
+  signUp:            { ar: "إنشاء حساب",                          en: "Sign Up" },
+  emailLabel:        { ar: "البريد الإلكتروني",                    en: "Email" },
+  password:          { ar: "كلمة المرور",                          en: "Password" },
+  signingIn:         { ar: "جارٍ تسجيل الدخول…",                  en: "Signing in…" },
+  loginError:        { ar: "البريد أو كلمة المرور غير صحيحة",     en: "Invalid email or password. Please try again." },
+  welcomeBackLogin:  { ar: "مرحباً بعودتك",                       en: "Welcome back" },
+  signInSubtitle:    { ar: "سجّل الدخول إلى حساب مدرستك",         en: "Sign in to your school account" },
+  newSchool:         { ar: "مدرسة جديدة؟",                         en: "New school?" },
+  registerSchool:    { ar: "سجّل مدرستك",                          en: "Register your school" },
+  schoolPlatform:    { ar: "منصة إدارة المدارس",                   en: "School Management Platform" },
 
   // ── Student Profile ──
   studentProfile:    { ar: "ملف الطالب",        en: "Student Profile" },
@@ -272,6 +279,69 @@ const translations: Record<string, Record<Lang, string>> = {
   refresh:           { ar: "تحديث",             en: "Refresh" },
   year:              { ar: "سنة",               en: "yr" },
   years:             { ar: "سنوات",             en: "yrs" },
+  days:              { ar: "أيام",              en: "days" },
+  logout:            { ar: "تسجيل الخروج",      en: "Sign Out" },
+  viewAll:           { ar: "عرض الكل",          en: "View All" },
+  assign:            { ar: "تعيين",             en: "Assign" },
+
+  // ── Overview extras ──
+  academicPerformance:    { ar: "الأداء الأكاديمي",         en: "Academic Performance" },
+  topStudentsLeaderboard: { ar: "أفضل الطلاب في الأداء",    en: "Top Students Leaderboard" },
+  noRecentAnnouncements:  { ar: "لا توجد إعلانات حديثة",    en: "No recent announcements" },
+  noAttendanceToday:      { ar: "لم يُسجَّل حضور اليوم",    en: "No attendance recorded today" },
+  noGradesRecorded:       { ar: "لم تُسجَّل درجات بعد",     en: "No grades recorded yet" },
+  noTeacherAssigned:      { ar: "لم يُعيَّن معلم بعد",      en: "No teacher assigned yet" },
+  passRate:               { ar: "نسبة النجاح",               en: "Pass Rate" },
+
+  // ── Attendance extras ──
+  morning:           { ar: "صباحي",             en: "Morning" },
+  afternoon:         { ar: "مسائي",             en: "Afternoon" },
+  shift:             { ar: "الفترة",            en: "Shift" },
+
+  // ── Fees extras ──
+  overdueFees:       { ar: "الرسوم المتأخرة",   en: "Overdue Fees" },
+  overdueRecords:    { ar: "سجلات متأخرة",       en: "Overdue Records" },
+
+  // ── Signup ──
+  createYourSchool:    { ar: "إنشاء مدرستك",                                    en: "Create your school" },
+  signupSubtitle:      { ar: "ستكون المدير. يمكنك إضافة المعلمين والطلاب لاحقاً", en: "You'll be the administrator. Add teachers and students later." },
+  registerFree:        { ar: "سجّل مدرستك — مجاناً",                            en: "Register your school — free to start" },
+  schoolNameEn:        { ar: "اسم المدرسة (إنجليزي / أساسي) *",                 en: "School Name (English / Primary) *" },
+  schoolNameLocal:     { ar: "اسم المدرسة الثانوي / المحلي (اختياري)",           en: "Secondary / Local School Name (Optional)" },
+  passwordMinChars:    { ar: "الحد الأدنى 6 أحرف",                               en: "Min. 6 characters" },
+  confirmPassword:     { ar: "تأكيد كلمة المرور *",                              en: "Confirm Password *" },
+  passwordLabel:       { ar: "كلمة المرور *",                                    en: "Password *" },
+  creatingSchool:      { ar: "جارٍ إنشاء المدرسة…",                              en: "Creating school…" },
+  createSchoolAccount: { ar: "إنشاء المدرسة والحساب",                            en: "Create School & Account" },
+  alreadyRegistered:   { ar: "لديك حساب بالفعل؟",                                en: "Already registered?" },
+  errPasswordMismatch: { ar: "كلمات المرور غير متطابقة",                          en: "Passwords do not match." },
+  errPasswordShort:    { ar: "يجب أن تكون كلمة المرور 6 أحرف على الأقل",          en: "Password must be at least 6 characters." },
+  errSchoolRequired:   { ar: "اسم المدرسة مطلوب",                                 en: "School name is required." },
+  errEmailInUse:       { ar: "هذا البريد مسجّل بالفعل. يرجى تسجيل الدخول",       en: "This email is already registered. Please sign in instead." },
+  errCreateAccount:    { ar: "فشل إنشاء الحساب",                                  en: "Failed to create account." },
+
+  // ── Subjects dialog ──
+  subjectNameAr:       { ar: "اسم المادة (عربي) *",    en: "Subject Name (Arabic) *" },
+  subjectNameEnCode:   { ar: "اسم المادة (إنجليزي) / الكود", en: "Subject Name (English) / Code" },
+  addSubjectTitle:     { ar: "إضافة مادة",             en: "Add Subject" },
+  editSubjectTitle:    { ar: "تعديل المادة",            en: "Edit Subject" },
+
+  // ── DeleteDialog titles ──
+  deleteStudent:       { ar: "حذف طالب",               en: "Delete Student" },
+  deleteTeacher:       { ar: "حذف معلّم",               en: "Delete Teacher" },
+  deleteClass:         { ar: "حذف صف دراسي",           en: "Delete Class" },
+  deleteSubject:       { ar: "حذف مادة دراسية",         en: "Delete Subject" },
+  deleteFeeRecord:     { ar: "حذف قيد رسوم",            en: "Delete Fee Record" },
+  deleteAnnouncement:  { ar: "حذف إعلان",               en: "Delete Announcement" },
+  deleteConfirmMsg:    { ar: "هل أنت متأكد من الحذف؟ لا يمكن التراجع عن هذا الإجراء.", en: "Are you sure? This action cannot be undone." },
+
+  // ── StudentProfile ──
+  studentNotFound:     { ar: "لم يُعثر على الطالب",    en: "Student not found" },
+  bloodGroup:          { ar: "فصيلة الدم",              en: "Blood Group" },
+  attendanceRate:      { ar: "نسبة الحضور",             en: "Attendance Rate" },
+  recordedGrades:      { ar: "الدرجات المسجّلة",        en: "Recorded Grades" },
+  scoreDistribution:   { ar: "توزيع الدرجات",           en: "Score Distribution" },
+  byTerm:              { ar: "حسب الفصل",               en: "by Term" },
 };
 
 // ─── Context ─────────────────────────────────────────────────────────────────

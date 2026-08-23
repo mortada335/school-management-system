@@ -22,9 +22,9 @@ export default function Login() {
   const { t, lang, setLang } = useTranslation();
   const navigate = useNavigate();
 
-  const [email, setEmail] = useState("");
+  const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError]       = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -35,7 +35,7 @@ export default function Login() {
       await login(email, password);
       navigate("/dashboard");
     } catch {
-      setError("Invalid email or password. Please try again.");
+      setError(t("loginError"));
     } finally {
       setIsLoading(false);
     }
@@ -43,12 +43,12 @@ export default function Login() {
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-50 dark:bg-gray-950 px-4 transition-colors">
-      {/* Top right quick settings */}
-      <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
+      {/* Top-right quick settings */}
+      <div className="absolute top-4 end-4 flex items-center gap-2 z-10">
         <button
           onClick={toggleTheme}
           className="rounded-xl border border-gray-200 bg-white p-2 text-gray-700 hover:bg-gray-100 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10 transition-colors shadow-2xs"
-          title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
+          title={theme === "dark" ? t("lightMode") : t("darkMode")}
         >
           {theme === "dark"
             ? <Sun  className="h-4 w-4 text-amber-400" strokeWidth={2} />
@@ -92,22 +92,24 @@ export default function Login() {
             EduSaaS
           </h1>
           <p className="mt-1 text-xs sm:text-sm text-gray-500 dark:text-gray-400">
-            School Management Platform
+            {t("schoolPlatform")}
           </p>
         </div>
 
         <Card className="border-gray-200 bg-white shadow-xl dark:border-white/10 dark:bg-white/5 dark:backdrop-blur-xl">
           <CardHeader className="pb-4">
-            <CardTitle className="text-lg sm:text-xl text-gray-900 dark:text-white">Welcome back</CardTitle>
+            <CardTitle className="text-lg sm:text-xl text-gray-900 dark:text-white">
+              {t("welcomeBackLogin")}
+            </CardTitle>
             <CardDescription className="text-gray-500 dark:text-gray-400 text-xs sm:text-sm">
-              Sign in to your school account
+              {t("signInSubtitle")}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-1.5">
                 <Label htmlFor="email" className="text-gray-700 dark:text-gray-300 text-xs sm:text-sm">
-                  {t("email")}
+                  {t("emailLabel")}
                 </Label>
                 <Input
                   id="email"
@@ -116,12 +118,13 @@ export default function Login() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
+                  dir="ltr"
                   className="border-gray-200 bg-gray-50 text-gray-900 placeholder:text-gray-400 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-gray-500 focus-visible:ring-indigo-500 text-sm"
                 />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="password" className="text-gray-700 dark:text-gray-300 text-xs sm:text-sm">
-                  Password
+                  {t("password")}
                 </Label>
                 <Input
                   id="password"
@@ -130,6 +133,7 @@ export default function Login() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
+                  dir="ltr"
                   className="border-gray-200 bg-gray-50 text-gray-900 placeholder:text-gray-400 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-gray-500 focus-visible:ring-indigo-500 text-sm"
                 />
               </div>
@@ -148,21 +152,21 @@ export default function Login() {
                 {isLoading ? (
                   <span className="flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Signing in…
+                    {t("signingIn")}
                   </span>
                 ) : (
-                  "Sign In"
+                  t("signIn")
                 )}
               </Button>
             </form>
 
             <p className="mt-6 text-center text-xs sm:text-sm text-gray-500 dark:text-gray-400">
-              New school?{" "}
+              {t("newSchool")}{" "}
               <Link
                 to="/signup"
                 className="font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300 transition-colors"
               >
-                Register your school
+                {t("registerSchool")}
               </Link>
             </p>
           </CardContent>

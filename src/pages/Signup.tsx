@@ -6,6 +6,7 @@ import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Sun, Moon, Loader2 } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -20,29 +21,29 @@ export default function Signup() {
   const { t, lang, setLang } = useTranslation();
   const navigate = useNavigate();
 
-  const [displayName, setDisplayName] = useState("");
-  const [schoolName, setSchoolName] = useState("");
-  const [schoolNameAr, setSchoolNameAr] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [displayName,     setDisplayName]     = useState("");
+  const [schoolName,      setSchoolName]      = useState("");
+  const [schoolNameAr,    setSchoolNameAr]    = useState("");
+  const [email,           setEmail]           = useState("");
+  const [password,        setPassword]        = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [error,           setError]           = useState("");
+  const [isLoading,       setIsLoading]       = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match.");
+      setError(t("errPasswordMismatch"));
       return;
     }
     if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
+      setError(t("errPasswordShort"));
       return;
     }
     if (!schoolName.trim()) {
-      setError("School name is required.");
+      setError(t("errSchoolRequired"));
       return;
     }
 
@@ -57,10 +58,9 @@ export default function Signup() {
       });
       navigate("/dashboard");
     } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Failed to create account.";
+      const message = err instanceof Error ? err.message : t("errCreateAccount");
       if (message.includes("email-already-in-use")) {
-        setError("This email is already registered. Please sign in instead.");
+        setError(t("errEmailInUse"));
       } else {
         setError(message);
       }
@@ -71,14 +71,17 @@ export default function Signup() {
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-50 dark:bg-gray-950 px-4 py-12 transition-colors">
-      {/* Top right quick settings */}
-      <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
+      {/* Top-right quick settings */}
+      <div className="absolute top-4 end-4 flex items-center gap-2 z-10">
         <button
           onClick={toggleTheme}
           className="rounded-xl border border-gray-200 bg-white p-2 text-gray-700 hover:bg-gray-100 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10 transition-colors shadow-2xs"
-          title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
+          title={theme === "dark" ? t("lightMode") : t("darkMode")}
         >
-          {theme === "dark" ? "☀️" : "🌙"}
+          {theme === "dark"
+            ? <Sun  className="h-4 w-4 text-amber-400" strokeWidth={2} />
+            : <Moon className="h-4 w-4 text-indigo-500" strokeWidth={2} />
+          }
         </button>
         <button
           onClick={() => setLang(lang === "ar" ? "en" : "ar")}
@@ -117,15 +120,17 @@ export default function Signup() {
             EduSaaS
           </h1>
           <p className="mt-1 text-xs sm:text-sm text-gray-500 dark:text-gray-400">
-            Register your school — free to start
+            {t("registerFree")}
           </p>
         </div>
 
         <Card className="border-gray-200 bg-white shadow-xl dark:border-white/10 dark:bg-white/5 dark:backdrop-blur-xl">
           <CardHeader className="pb-4">
-            <CardTitle className="text-lg sm:text-xl text-gray-900 dark:text-white">Create your school</CardTitle>
+            <CardTitle className="text-lg sm:text-xl text-gray-900 dark:text-white">
+              {t("createYourSchool")}
+            </CardTitle>
             <CardDescription className="text-gray-500 dark:text-gray-400 text-xs sm:text-sm">
-              You'll be the administrator. Add teachers and students later.
+              {t("signupSubtitle")}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -133,7 +138,7 @@ export default function Signup() {
               {/* School Info */}
               <div className="space-y-1.5">
                 <Label htmlFor="school-name" className="text-gray-700 dark:text-gray-300 text-xs sm:text-sm">
-                  School Name (English / Primary) *
+                  {t("schoolNameEn")}
                 </Label>
                 <Input
                   id="school-name"
@@ -147,7 +152,7 @@ export default function Signup() {
 
               <div className="space-y-1.5">
                 <Label htmlFor="school-name-ar" className="text-gray-700 dark:text-gray-300 text-xs sm:text-sm">
-                  Secondary / Local School Name (Optional)
+                  {t("schoolNameLocal")}
                 </Label>
                 <Input
                   id="school-name-ar"
@@ -177,7 +182,7 @@ export default function Signup() {
 
               <div className="space-y-1.5">
                 <Label htmlFor="signup-email" className="text-gray-700 dark:text-gray-300 text-xs sm:text-sm">
-                  {t("email")} *
+                  {t("emailLabel")} *
                 </Label>
                 <Input
                   id="signup-email"
@@ -186,28 +191,30 @@ export default function Signup() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
+                  dir="ltr"
                   className="border-gray-200 bg-gray-50 text-gray-900 placeholder:text-gray-400 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-gray-500 focus-visible:ring-indigo-500 text-sm"
                 />
               </div>
 
               <div className="space-y-1.5">
                 <Label htmlFor="signup-password" className="text-gray-700 dark:text-gray-300 text-xs sm:text-sm">
-                  Password *
+                  {t("passwordLabel")}
                 </Label>
                 <Input
                   id="signup-password"
                   type="password"
-                  placeholder="Min. 6 characters"
+                  placeholder={t("passwordMinChars")}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
+                  dir="ltr"
                   className="border-gray-200 bg-gray-50 text-gray-900 placeholder:text-gray-400 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-gray-500 focus-visible:ring-indigo-500 text-sm"
                 />
               </div>
 
               <div className="space-y-1.5">
                 <Label htmlFor="confirm-password" className="text-gray-700 dark:text-gray-300 text-xs sm:text-sm">
-                  Confirm Password *
+                  {t("confirmPassword")}
                 </Label>
                 <Input
                   id="confirm-password"
@@ -216,6 +223,7 @@ export default function Signup() {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
+                  dir="ltr"
                   className="border-gray-200 bg-gray-50 text-gray-900 placeholder:text-gray-400 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-gray-500 focus-visible:ring-indigo-500 text-sm"
                 />
               </div>
@@ -233,25 +241,22 @@ export default function Signup() {
               >
                 {isLoading ? (
                   <span className="flex items-center gap-2">
-                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    Creating school…
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    {t("creatingSchool")}
                   </span>
                 ) : (
-                  "Create School & Account"
+                  t("createSchoolAccount")
                 )}
               </Button>
             </form>
 
             <p className="mt-6 text-center text-xs sm:text-sm text-gray-500 dark:text-gray-400">
-              Already registered?{" "}
+              {t("alreadyRegistered")}{" "}
               <Link
                 to="/login"
                 className="font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300 transition-colors"
               >
-                Sign in
+                {t("signIn")}
               </Link>
             </p>
           </CardContent>

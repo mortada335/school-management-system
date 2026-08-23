@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useAcademicYear } from "@/contexts/AcademicYearContext";
@@ -22,23 +22,15 @@ import {
 import { Combobox } from "@/components/ui/combobox";
 import ExcelExport from "@/components/ExcelExport";
 import RoleGuard from "@/components/RoleGuard";
+import DeleteDialog from "@/components/ui/DeleteDialog";
+import DataWrapper from "@/components/ui/DataWrapper";
+import { SkeletonTableRow } from "@/components/ui/Skeleton";
+import { Trash2 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Legend,
 } from "recharts";
 
-const FEE_TYPES: { value: FeeType; label: string }[] = [
-  { value: "tuition",  label: "Tuition Fee" },
-  { value: "uniform",  label: "Uniform" },
-  { value: "activity", label: "Activities & Trips" },
-  { value: "other",    label: "Other Fees" },
-];
-
-const FEE_STATUSES: { value: FeeStatus; label: string; color: string }[] = [
-  { value: "paid",    label: "Paid",    color: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-green-500/20 dark:text-green-400 dark:border-green-500/30" },
-  { value: "unpaid",  label: "Unpaid",  color: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-red-500/20 dark:text-red-400 dark:border-red-500/30" },
-  { value: "partial", label: "Partial", color: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-yellow-500/20 dark:text-yellow-400 dark:border-yellow-500/30" },
-];
 
 const emptyForm = () => ({
   studentId: "",
@@ -58,9 +50,22 @@ const PIE_COLORS = ["#10b981", "#6366f1", "#f59e0b", "#94a3b8"];
 
 export default function Fees() {
   const { schoolId } = useAuth();
-  const { isDark } = useTheme();
   const { activeYear } = useAcademicYear();
+  const { isDark } = useTheme();
   const { t } = useTranslation();
+
+  const FEE_TYPES = useMemo(() => [
+    { value: "tuition"  as FeeType, label: t("tuition") },
+    { value: "uniform"  as FeeType, label: t("uniform") },
+    { value: "activity" as FeeType, label: t("activity") },
+    { value: "other"    as FeeType, label: t("other") },
+  ], [t]);
+
+  const FEE_STATUSES = useMemo(() => [
+    { value: "paid"    as FeeStatus, label: t("paid"),    color: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-green-500/20 dark:text-green-400 dark:border-green-500/30" },
+    { value: "unpaid"  as FeeStatus, label: t("unpaid"),  color: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-red-500/20 dark:text-red-400 dark:border-red-500/30" },
+    { value: "partial" as FeeStatus, label: t("partial"), color: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-yellow-500/20 dark:text-yellow-400 dark:border-yellow-500/30" },
+  ], [t]);
 
   const [fees, setFees] = useState<Fee[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
@@ -69,6 +74,8 @@ export default function Fees() {
   const [editing, setEditing] = useState<Fee | null>(null);
   const [form, setForm] = useState(emptyForm());
   const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Fee | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [showOverdueOnly, setShowOverdueOnly] = useState(false);
@@ -155,13 +162,21 @@ export default function Fees() {
     await load();
   };
 
-  const handleDelete = async (f: Fee) => {
-    if (!schoolId || !confirm(`Delete fee record for "${f.studentName}"?`)) return;
+  const handleDelete = (f: Fee) => {
+    setDeleteTarget(f);
+  };
+
+  const confirmDelete = async () => {
+    if (!schoolId || !deleteTarget) return;
+    setDeleting(true);
     try {
-      await deleteDocument(schoolId, "fees", f.id);
+      await deleteDocument(schoolId, "fees", deleteTarget.id);
+      setDeleteTarget(null);
       await load();
     } catch (err) {
       console.error("Error deleting fee:", err);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -233,7 +248,7 @@ export default function Fees() {
           <ExcelExport data={excelData} filename="fees" label={t("exportFees")} />
           <RoleGuard permission="manage:fees">
             <button onClick={openAdd} className="rounded-xl bg-indigo-600 px-3.5 py-2 text-xs sm:text-sm font-semibold text-white hover:bg-indigo-500 shadow-md shadow-indigo-500/20 transition-all">
-              + {t("addFeeRecord")}
+              {t("addFeeRecord")}
             </button>
           </RoleGuard>
         </div>
@@ -351,70 +366,84 @@ export default function Fees() {
       </div>
 
       {/* Table */}
-      <div className="rounded-2xl border border-gray-200 bg-white overflow-x-auto shadow-sm dark:border-white/10 dark:bg-white/5">
-        <table className="w-full text-xs sm:text-sm text-left min-w-[800px]">
-          <thead className="border-b border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-gray-900/60">
-            <tr>
-              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("student")}</th>
-              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("feeType")}</th>
-              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("amount")}</th>
-              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("dueDate")}</th>
-              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("paymentStatus")}</th>
-              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">Receipt</th>
-              <th className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("actions")}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100 dark:divide-white/5">
-            {loading ? (
-              <tr><td colSpan={7} className="py-16 text-center text-gray-400">{t("loading")}</td></tr>
-            ) : filtered.length === 0 ? (
-              <tr><td colSpan={7} className="py-16 text-center text-gray-500 dark:text-gray-400">{t("noFeesFound")}</td></tr>
-            ) : filtered.map((f) => {
-              const statusMeta = FEE_STATUSES.find((s) => s.value === f.status) ?? FEE_STATUSES[1];
-              const typeMeta = FEE_TYPES.find((t) => t.value === f.type);
-              const isOverdue = f.status !== "paid" && f.dueDate && f.dueDate < today;
-              return (
-                <tr key={f.id} className={`hover:bg-gray-50/80 dark:hover:bg-white/5 transition-colors ${isOverdue ? "bg-amber-50/40 dark:bg-amber-500/5" : ""}`}>
-                  <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
-                    {f.studentName}
-                    {isOverdue && <span className="ml-2 text-[10px] text-amber-600 dark:text-amber-400 border border-amber-300 dark:border-amber-500/30 rounded-full px-1.5 py-0.5 font-normal">⚠ Overdue</span>}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{typeMeta?.label || f.type}</td>
-                  <td className="px-4 py-3 font-bold text-emerald-600 dark:text-emerald-400 font-mono text-xs sm:text-sm">{formatIQD(f.amount)}</td>
-                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400 font-mono text-xs">{f.dueDate || "—"}</td>
-                  <td className="px-4 py-3">
-                    <button
-                      onClick={() => togglePaidStatus(f)}
-                      className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition-transform active:scale-95 ${statusMeta.color}`}
-                    >
-                      {statusMeta.label}
-                    </button>
-                  </td>
-                  <td className="px-4 py-3 text-gray-500 dark:text-gray-400 font-mono text-xs">{f.receiptNumber || "—"}</td>
-                  <td className="px-4 py-3 text-right">
-                    <RoleGuard permission="manage:fees">
-                      <div className="flex items-center justify-end gap-1.5 sm:gap-2">
-                        <button
-                          onClick={() => openEdit(f)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2 sm:px-2.5 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-400 dark:hover:bg-indigo-500/20 transition-all active:scale-95 shadow-2xs"
-                        >
-                          ✏️ {t("edit")}
-                        </button>
-                        <button
-                          onClick={() => handleDelete(f)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 sm:px-2.5 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-400 dark:hover:bg-rose-500/20 transition-all active:scale-95 shadow-2xs"
-                        >
-                          🗑 {t("delete")}
-                        </button>
-                      </div>
-                    </RoleGuard>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      <DataWrapper
+        loading={loading}
+        empty={filtered.length === 0}
+        emptyMessage={String(t("noFeesFound"))}
+        skeleton={
+          <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xs dark:border-white/10 dark:bg-white/5">
+            <table className="w-full text-left text-sm">
+              <tbody className="divide-y divide-gray-100 dark:divide-white/5">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <SkeletonTableRow key={i} cols={7} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        }
+      >
+        <div className="rounded-2xl border border-gray-200 bg-white overflow-x-auto shadow-sm dark:border-white/10 dark:bg-white/5">
+          <table className="w-full text-xs sm:text-sm text-left min-w-[800px]">
+            <thead className="border-b border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-gray-900/60">
+              <tr>
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("student")}</th>
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("feeType")}</th>
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("amount")}</th>
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("dueDate")}</th>
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("paymentStatus")}</th>
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">Receipt</th>
+                <th className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("actions")}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-white/5">
+              {filtered.map((f) => {
+                const statusMeta = FEE_STATUSES.find((s) => s.value === f.status) ?? FEE_STATUSES[1];
+                const typeMeta = FEE_TYPES.find((t) => t.value === f.type);
+                const isOverdue = f.status !== "paid" && f.dueDate && f.dueDate < today;
+                return (
+                  <tr key={f.id} className={`hover:bg-gray-50/80 dark:hover:bg-white/5 transition-colors ${isOverdue ? "bg-amber-50/40 dark:bg-amber-500/5" : ""}`}>
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
+                      {f.studentName}
+                      {isOverdue && <span className="ml-2 text-[10px] text-amber-600 dark:text-amber-400 border border-amber-300 dark:border-amber-500/30 rounded-full px-1.5 py-0.5 font-normal">⚠ Overdue</span>}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{typeMeta?.label || f.type}</td>
+                    <td className="px-4 py-3 font-bold text-emerald-600 dark:text-emerald-400 font-mono text-xs sm:text-sm">{formatIQD(f.amount)}</td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-400 font-mono text-xs">{f.dueDate || "—"}</td>
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => togglePaidStatus(f)}
+                        className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition-transform active:scale-95 ${statusMeta.color}`}
+                      >
+                        {statusMeta.label}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 font-mono text-xs">{f.receiptNumber || "—"}</td>
+                    <td className="px-4 py-3 text-right">
+                      <RoleGuard permission="manage:fees">
+                        <div className="flex items-center justify-end gap-1.5 sm:gap-2">
+                          <button
+                            onClick={() => openEdit(f)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2 sm:px-2.5 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-400 dark:hover:bg-indigo-500/20 transition-all active:scale-95 shadow-2xs"
+                          >
+                            ✏️ {t("edit")}
+                          </button>
+                          <button
+                            onClick={() => handleDelete(f)}
+                            className="flex justify-between items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 sm:px-2.5 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-400 dark:hover:bg-rose-500/20 transition-all active:scale-95 shadow-2xs"
+                          >
+                            <Trash2 size={14} />
+                            {t("delete")}
+                          </button>
+                        </div>
+                      </RoleGuard>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </DataWrapper>
 
       {/* Dialog */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
@@ -513,6 +542,18 @@ export default function Fees() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteDialog
+        open={!!deleteTarget}
+        title={t("deleteFeeRecord")}
+        description={deleteTarget ? `${t("deleteConfirmMsg")} "${deleteTarget.studentName}" – ${formatIQD(deleteTarget.amount)}` : undefined}
+        confirmLabel={String(t("delete"))}
+        cancelLabel={String(t("cancel"))}
+        loading={deleting}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

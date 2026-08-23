@@ -17,6 +17,10 @@ import {
 } from "@/components/ui/dialog";
 import ExcelExport from "@/components/ExcelExport";
 import RoleGuard from "@/components/RoleGuard";
+import DeleteDialog from "@/components/ui/DeleteDialog";
+import DataWrapper from "@/components/ui/DataWrapper";
+import { SkeletonTableRow } from "@/components/ui/Skeleton";
+import { Trash2 } from 'lucide-react';
 
 const emptyForm = () => ({
   name: "",
@@ -62,6 +66,8 @@ export default function Teachers() {
   const [editing, setEditing] = useState<Teacher | null>(null);
   const [form, setForm] = useState(emptyForm());
   const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Teacher | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [search, setSearch] = useState("");
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [assignTarget, setAssignTarget] = useState<Teacher | null>(null);
@@ -144,13 +150,21 @@ export default function Teachers() {
     }
   };
 
-  const handleDelete = async (teacher: Teacher) => {
-    if (!schoolId || !confirm(`Delete teacher "${teacher.name}"?`)) return;
+  const handleDelete = (teacher: Teacher) => {
+    setDeleteTarget(teacher);
+  };
+
+  const confirmDelete = async () => {
+    if (!schoolId || !deleteTarget) return;
+    setDeleting(true);
     try {
-      await deleteDocument(schoolId, "teachers", teacher.id);
+      await deleteDocument(schoolId, "teachers", deleteTarget.id);
+      setDeleteTarget(null);
       await load();
     } catch (err) {
       console.error("Error deleting teacher:", err);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -184,7 +198,7 @@ export default function Teachers() {
         </div>
         <RoleGuard permission="manage:teachers">
           <button onClick={openAdd} className="rounded-lg bg-indigo-600 px-3.5 py-2 text-xs sm:text-sm font-medium text-white hover:bg-indigo-500 shadow-md shadow-indigo-500/20 transition-all self-start sm:self-auto">
-            + {t("addTeacher")}
+            {t("addTeacher")}
           </button>
         </RoleGuard>
       </div>
@@ -220,87 +234,101 @@ export default function Teachers() {
         <ExcelExport data={excelData} filename="teachers" label={t("exportExcel")} />
       </div>
 
-      {/* Table */}
-      <div className="rounded-2xl border border-gray-200 bg-white overflow-x-auto shadow-sm dark:border-white/10 dark:bg-white/5">
-        <table className="w-full text-xs sm:text-sm text-left min-w-[800px]">
-          <thead className="border-b border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-gray-900/60">
-            <tr>
-              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("teachers")}</th>
-              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("email")}</th>
-              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("specialization")}</th>
-              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("subjects")}</th>
-              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("status")}</th>
-              <th className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("actions")}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100 dark:divide-white/5">
-            {loading ? (
-              <tr><td colSpan={6} className="py-16 text-center text-gray-400">{t("loading")}</td></tr>
-            ) : filtered.length === 0 ? (
-              <tr><td colSpan={6} className="py-16 text-center text-gray-500 dark:text-gray-400">{t("noTeachersFound")}</td></tr>
-            ) : filtered.map((teacher) => {
-              const subjectNames = (teacher.subjectIds ?? [])
-                .map((id) => allSubjects.find((s) => s.id === id)?.name)
-                .filter(Boolean);
-              return (
-                <tr key={teacher.id} className="hover:bg-gray-50/80 dark:hover:bg-white/5 transition-colors">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <TeacherAvatar name={teacher.name} />
-                      <div>
-                        <p className="font-medium text-gray-900 dark:text-white">{teacher.name}</p>
-                        {teacher.nameEn && <p className="text-xs text-gray-500 dark:text-gray-400">{teacher.nameEn}</p>}
+      {/* Teachers Table */}
+      <DataWrapper
+        loading={loading}
+        empty={filtered.length === 0}
+        emptyMessage={String(t("noTeachersFound"))}
+        skeleton={
+          <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xs dark:border-white/10 dark:bg-white/5">
+            <table className="w-full text-left text-sm">
+              <tbody className="divide-y divide-gray-100 dark:divide-white/5">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <SkeletonTableRow key={i} cols={6} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        }
+      >
+        <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-xs dark:border-white/10 dark:bg-white/5">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-gray-200 bg-gray-50/80 dark:border-white/10 dark:bg-white/5">
+              <tr>
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("teachers")}</th>
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("email")}</th>
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("specialization")}</th>
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("subjects")}</th>
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("status")}</th>
+                <th className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("actions")}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-white/5">
+              {filtered.map((teacher) => {
+                const subjectNames = (teacher.subjectIds ?? [])
+                  .map((id) => allSubjects.find((s) => s.id === id)?.name)
+                  .filter(Boolean);
+                return (
+                  <tr key={teacher.id} className="hover:bg-gray-50/80 dark:hover:bg-white/5 transition-colors">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <TeacherAvatar name={teacher.name} />
+                        <div>
+                          <p className="font-medium text-gray-900 dark:text-white">{teacher.name}</p>
+                          {teacher.nameEn && <p className="text-xs text-gray-500 dark:text-gray-400">{teacher.nameEn}</p>}
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400 font-mono text-xs">{teacher.email || "—"}</td>
-                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400 text-xs">{teacher.specialization || "—"}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-1">
-                      {subjectNames.length === 0 ? (
-                        <span className="text-gray-400 text-xs">—</span>
-                      ) : subjectNames.slice(0, 3).map((name, i) => (
-                        <span key={i} className="rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 dark:bg-indigo-500/20 dark:border-indigo-500/30 dark:text-indigo-300 px-2 py-0.5 text-[10px] font-medium">
-                          {name}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${STATUS_COLORS[teacher.status ?? "active"]}`}>
-                      {teacher.status === "active" ? t("active") : teacher.status === "on-leave" ? t("onLeave") : t("resigned")}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1.5 sm:gap-2">
-                      <RoleGuard permission="manage:teachers">
+                    </td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-400 font-mono text-xs">{teacher.email || "—"}</td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-400 text-xs">{teacher.specialization || "—"}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        {subjectNames.length === 0 ? (
+                          <span className="text-gray-400 text-xs">—</span>
+                        ) : subjectNames.slice(0, 3).map((name, i) => (
+                          <span key={i} className="rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 dark:bg-indigo-500/20 dark:border-indigo-500/30 dark:text-indigo-300 px-2 py-0.5 text-[10px] font-medium">
+                            {name}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${STATUS_COLORS[teacher.status ?? "active"]}`}>
+                        {teacher.status === "active" ? t("active") : teacher.status === "on-leave" ? t("onLeave") : t("resigned")}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1.5 sm:gap-2">
                         <button
                           onClick={() => openAssign(teacher)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2 sm:px-2.5 py-1 text-xs font-medium text-violet-700 hover:bg-violet-100 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-400 dark:hover:bg-violet-500/20 transition-all"
+                          className="inline-flex items-center gap-1 rounded-lg border border-purple-200 bg-purple-50 px-2 sm:px-2.5 py-1 text-xs font-medium text-purple-700 hover:bg-purple-100 dark:border-purple-500/30 dark:bg-purple-500/10 dark:text-purple-400 dark:hover:bg-purple-500/20 transition-all active:scale-95 shadow-2xs"
                         >
-                          📚 {t("assignSubjects")}
+                          📚 {t("assign")}
                         </button>
-                        <button
-                          onClick={() => openEdit(teacher)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2 sm:px-2.5 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-400 dark:hover:bg-indigo-500/20 transition-all active:scale-95"
-                        >
-                          ✏️ {t("edit")}
-                        </button>
-                        <button
-                          onClick={() => handleDelete(teacher)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 sm:px-2.5 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-400 dark:hover:bg-rose-500/20 transition-all active:scale-95"
-                        >
-                          🗑 {t("delete")}
-                        </button>
-                      </RoleGuard>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                        <RoleGuard permission="manage:teachers">
+                          <button
+                            onClick={() => openEdit(teacher)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2 sm:px-2.5 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-400 dark:hover:bg-indigo-500/20 transition-all active:scale-95 shadow-2xs"
+                          >
+                            ✏️ {t("edit")}
+                          </button>
+                          <button
+                            onClick={() => handleDelete(teacher)}
+                            className="flex justify-center items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 sm:px-2.5 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-400 dark:hover:bg-rose-500/20 transition-all active:scale-95"
+                          >
+                            <Trash2 size={14} />
+                            {t("delete")}
+                          </button>
+                        </RoleGuard>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </DataWrapper>
 
       {/* Add/Edit Dialog */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
@@ -420,6 +448,18 @@ export default function Teachers() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteDialog
+        open={!!deleteTarget}
+        title={t("deleteTeacher")}
+        description={deleteTarget ? `${t("deleteConfirmMsg")} "${deleteTarget.name}"` : undefined}
+        confirmLabel={String(t("delete"))}
+        cancelLabel={String(t("cancel"))}
+        loading={deleting}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

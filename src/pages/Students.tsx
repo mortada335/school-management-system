@@ -21,7 +21,11 @@ import {
 import { Combobox } from "@/components/ui/combobox";
 import ExcelExport from "@/components/ExcelExport";
 import RoleGuard from "@/components/RoleGuard";
+import DeleteDialog from "@/components/ui/DeleteDialog";
+import DataWrapper from "@/components/ui/DataWrapper";
+import { SkeletonTableRow } from "@/components/ui/Skeleton";
 import { differenceInYears, parseISO } from "date-fns";
+import { Trash2 } from 'lucide-react';
 
 const emptyForm = () => ({
   name: "",
@@ -77,6 +81,8 @@ export default function Students() {
   const [editing, setEditing] = useState<Student | null>(null);
   const [form, setForm] = useState(emptyForm());
   const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Student | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [search, setSearch] = useState("");
   const [filterClass, setFilterClass] = useState("all");
   const [filterGender, setFilterGender] = useState("all");
@@ -151,13 +157,21 @@ export default function Students() {
     }
   };
 
-  const handleDelete = async (s: Student) => {
-    if (!schoolId || !confirm(`Delete student "${s.name}"?`)) return;
+  const handleDelete = (s: Student) => {
+    setDeleteTarget(s);
+  };
+
+  const confirmDelete = async () => {
+    if (!schoolId || !deleteTarget) return;
+    setDeleting(true);
     try {
-      await deleteDocument(schoolId, "students", s.id);
+      await deleteDocument(schoolId, "students", deleteTarget.id);
+      setDeleteTarget(null);
       await load();
     } catch (err) {
       console.error("Error deleting student:", err);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -203,7 +217,7 @@ export default function Students() {
         </div>
         <RoleGuard permission="manage:students">
           <button onClick={openAdd} className="rounded-lg bg-indigo-600 px-3.5 py-2 text-xs sm:text-sm font-medium text-white hover:bg-indigo-500 shadow-md shadow-indigo-500/20 transition-all self-start sm:self-auto">
-            + {t("addStudentBtn")}
+            {t("addStudentBtn")}
           </button>
         </RoleGuard>
       </div>
@@ -253,73 +267,87 @@ export default function Students() {
       </div>
 
       {/* Table */}
-      <div className="rounded-2xl border border-gray-200 bg-white overflow-x-auto shadow-sm dark:border-white/10 dark:bg-white/5">
-        <table className="w-full text-xs sm:text-sm text-left min-w-[800px]">
-          <thead className="border-b border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-gray-900/60">
-            <tr>
-              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("name")}</th>
-              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("class")}</th>
-              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("gender")}</th>
-              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("age")}</th>
-              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("guardian")}</th>
-              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("phone")}</th>
-              <th className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("actions")}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100 dark:divide-white/5">
-            {loading ? (
-              <tr><td colSpan={7} className="py-16 text-center text-gray-400">{t("loading")}</td></tr>
-            ) : filtered.length === 0 ? (
-              <tr><td colSpan={7} className="py-16 text-center text-gray-500 dark:text-gray-400">{t("noStudentsFound")}</td></tr>
-            ) : filtered.map((s) => (
-              <tr key={s.id} className="hover:bg-gray-50/80 dark:hover:bg-white/5 transition-colors">
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <Avatar name={s.name} gender={s.gender} />
-                    <div>
-                      <p className="font-medium text-gray-900 dark:text-white">{s.name}</p>
-                      {s.nameEn && <p className="text-xs text-gray-500 dark:text-gray-400">{s.nameEn}</p>}
-                    </div>
-                  </div>
-                </td>
-                <td className="px-4 py-3 text-gray-700 dark:text-gray-300 text-xs">{s.className}</td>
-                <td className="px-4 py-3">
-                  <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-semibold border ${s.gender === "male" ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-400 dark:border-blue-500/30" : "bg-pink-50 text-pink-700 border-pink-200 dark:bg-pink-500/20 dark:text-pink-400 dark:border-pink-500/30"}`}>
-                    {s.gender === "male" ? t("male") : t("female")}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-gray-600 dark:text-gray-400 text-xs">{calcAge(s.dateOfBirth)}</td>
-                <td className="px-4 py-3 text-gray-700 dark:text-gray-300 text-xs">{s.guardianName || "—"}</td>
-                <td className="px-4 py-3 text-gray-600 dark:text-gray-400 font-mono text-xs">{s.guardianPhone || "—"}</td>
-                <td className="px-4 py-3 text-right">
-                  <div className="flex items-center justify-end gap-1.5 sm:gap-2">
-                    <button
-                      onClick={() => navigate(`/dashboard/students/${s.id}`)}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-xs font-medium text-cyan-700 hover:bg-cyan-100 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-400 dark:hover:bg-cyan-500/20 transition-all shadow-2xs"
-                    >
-                      👁 {t("view")}
-                    </button>
-                    <RoleGuard permission="manage:students">
-                      <button
-                        onClick={() => openEdit(s)}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-400 dark:hover:bg-indigo-500/20 transition-all active:scale-95 shadow-2xs"
-                      >
-                        ✏️ {t("edit")}
-                      </button>
-                      <button
-                        onClick={() => handleDelete(s)}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-400 dark:hover:bg-rose-500/20 transition-all active:scale-95 shadow-2xs"
-                      >
-                        🗑 {t("delete")}
-                      </button>
-                    </RoleGuard>
-                  </div>
-                </td>
+      <DataWrapper
+        loading={loading}
+        empty={filtered.length === 0}
+        emptyMessage={String(t("noStudentsFound"))}
+        skeleton={
+          <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xs dark:border-white/10 dark:bg-white/5">
+            <table className="w-full text-left text-sm">
+              <tbody className="divide-y divide-gray-100 dark:divide-white/5">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <SkeletonTableRow key={i} cols={7} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        }
+      >
+        <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-xs dark:border-white/10 dark:bg-white/5">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-gray-200 bg-gray-50/80 dark:border-white/10 dark:bg-white/5">
+              <tr>
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("student")}</th>
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("class")}</th>
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("gender")}</th>
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("age")}</th>
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("guardianName")}</th>
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("phone")}</th>
+                <th className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("actions")}</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-white/5">
+              {filtered.map((s) => (
+                <tr key={s.id} className="hover:bg-gray-50/80 dark:hover:bg-white/5 transition-colors">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <Avatar name={s.name} gender={s.gender} />
+                      <div>
+                        <p className="font-medium text-gray-900 dark:text-white">{s.name}</p>
+                        {s.nameEn && <p className="text-xs text-gray-500 dark:text-gray-400">{s.nameEn}</p>}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-gray-700 dark:text-gray-300 text-xs">{s.className}</td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-semibold border ${s.gender === "male" ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-400 dark:border-blue-500/30" : "bg-pink-50 text-pink-700 border-pink-200 dark:bg-pink-500/20 dark:text-pink-400 dark:border-pink-500/30"}`}>
+                      {s.gender === "male" ? t("male") : t("female")}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400 text-xs">{calcAge(s.dateOfBirth)}</td>
+                  <td className="px-4 py-3 text-gray-700 dark:text-gray-300 text-xs">{s.guardianName || "—"}</td>
+                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400 font-mono text-xs">{s.guardianPhone || "—"}</td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-1.5 sm:gap-2">
+                      <button
+                        onClick={() => navigate(`/dashboard/students/${s.id}`)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-xs font-medium text-cyan-700 hover:bg-cyan-100 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-400 dark:hover:bg-cyan-500/20 transition-all shadow-2xs"
+                      >
+                        👁 {t("view")}
+                      </button>
+                      <RoleGuard permission="manage:students">
+                        <button
+                          onClick={() => openEdit(s)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-400 dark:hover:bg-indigo-500/20 transition-all active:scale-95 shadow-2xs"
+                        >
+                          ✏️ {t("edit")}
+                        </button>
+                        <button
+                          onClick={() => handleDelete(s)}
+                          className="flex justify-between items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 sm:px-2.5 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-400 dark:hover:bg-rose-500/20 transition-all active:scale-95 shadow-2xs"
+                        >
+                          <Trash2 size={14} />
+                          {t("delete")}
+                        </button>
+                      </RoleGuard>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </DataWrapper>
 
       {/* Add/Edit Dialog */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
@@ -418,6 +446,18 @@ export default function Students() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteDialog
+        open={!!deleteTarget}
+        title={t("deleteStudent")}
+        description={deleteTarget ? `${t("deleteConfirmMsg")} "${deleteTarget.name}"` : undefined}
+        confirmLabel={String(t("delete"))}
+        cancelLabel={String(t("cancel"))}
+        loading={deleting}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

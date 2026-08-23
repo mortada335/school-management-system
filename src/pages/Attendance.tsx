@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAcademicYear } from "@/contexts/AcademicYearContext";
 import { useTranslation } from "@/lib/i18n";
@@ -12,18 +12,21 @@ import type { AttendanceRecord, AttendanceStatus, Student, Class } from "@/types
 import { Combobox } from "@/components/ui/combobox";
 import ExcelExport from "@/components/ExcelExport";
 import RoleGuard from "@/components/RoleGuard";
+import DataWrapper from "@/components/ui/DataWrapper";
+import { SkeletonCard, SkeletonTableRow } from "@/components/ui/Skeleton";
 
-const STATUS_OPTIONS: { value: AttendanceStatus; label: string; icon: string; color: string }[] = [
-  { value: "present", label: "Present",  icon: "✅", color: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-400 dark:border-emerald-500/30" },
-  { value: "absent",  label: "Absent",   icon: "❌", color: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/20 dark:text-rose-400 dark:border-rose-500/30" },
-  { value: "late",    label: "Late",     icon: "🕐", color: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-yellow-500/20 dark:text-yellow-400 dark:border-yellow-500/30" },
-  { value: "excused", label: "Excused",  icon: "📋", color: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-400 dark:border-blue-500/30" },
-];
 
 export default function Attendance() {
   const { schoolId, user } = useAuth();
   const { activeYear } = useAcademicYear();
   const { t } = useTranslation();
+
+  const STATUS_OPTIONS = useMemo(() => [
+    { value: "present" as AttendanceStatus, label: t("present"), icon: "✅", color: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-400 dark:border-emerald-500/30" },
+    { value: "absent"  as AttendanceStatus, label: t("absent"),  icon: "❌", color: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/20 dark:text-rose-400 dark:border-rose-500/30" },
+    { value: "late"    as AttendanceStatus, label: t("late"),    icon: "🕐", color: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-yellow-500/20 dark:text-yellow-400 dark:border-yellow-500/30" },
+    { value: "excused" as AttendanceStatus, label: t("excused"), icon: "📋", color: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-400 dark:border-blue-500/30" },
+  ], [t]);
 
   const [classes, setClasses] = useState<Class[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
@@ -207,14 +210,19 @@ export default function Attendance() {
             <div className="rounded-2xl border border-gray-200 bg-white dark:border-white/10 dark:bg-white/5 py-20 text-center text-gray-400 text-sm">
               {t("selectClassFirst")}
             </div>
-          ) : loading ? (
-            <div className="py-16 text-center text-gray-400 text-sm">{t("loading")}</div>
-          ) : students.length === 0 ? (
-            <div className="rounded-2xl border border-gray-200 bg-white dark:border-white/10 dark:bg-white/5 py-20 text-center text-gray-400 text-sm">
-              {t("noStudentsInClass")}
-            </div>
           ) : (
-            <>
+            <DataWrapper
+              loading={loading}
+              empty={students.length === 0}
+              emptyMessage={String(t("noStudentsInClass"))}
+              skeleton={
+                <div className="space-y-3">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <SkeletonCard key={i} className="h-16" />
+                  ))}
+                </div>
+              }
+            >
               {/* Summary Stats */}
               <div className="grid grid-cols-3 gap-3 sm:gap-4">
                 <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/70 p-3.5 sm:p-4 text-center shadow-xs dark:border-emerald-500/30 dark:bg-emerald-500/10">
@@ -295,10 +303,10 @@ export default function Attendance() {
                   >
                     {saving ? t("saving") : t("saveAttendance")}
                   </button>
-                  {saved && <span className="text-emerald-600 dark:text-emerald-400 text-xs sm:text-sm font-medium">✓ {t("savedSuccessfully")}</span>}
+                  {saved && <span className="text-emerald-600 dark:text-emerald-400 text-xs sm:text-sm font-medium">{t("savedSuccessfully")}</span>}
                 </div>
               </RoleGuard>
-            </>
+            </DataWrapper>
           )}
         </div>
       ) : (
@@ -314,13 +322,22 @@ export default function Attendance() {
             />
           </div>
 
-          {historyLoading ? (
-            <p className="text-gray-400 py-10 text-center text-sm">{t("loading")}</p>
-          ) : history.length === 0 ? (
-            <div className="rounded-2xl border border-gray-200 bg-white dark:border-white/10 dark:bg-white/5 py-16 text-center text-gray-400 text-sm">
-              {t("noData")}
-            </div>
-          ) : (
+          <DataWrapper
+            loading={historyLoading}
+            empty={history.length === 0}
+            emptyMessage={String(t("noData"))}
+            skeleton={
+              <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xs dark:border-white/10 dark:bg-white/5">
+                <table className="w-full text-left text-sm">
+                  <tbody className="divide-y divide-gray-100 dark:divide-white/5">
+                    {Array.from({ length: 6 }).map((_, i) => (
+                      <SkeletonTableRow key={i} cols={4} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            }
+          >
             <div className="rounded-2xl border border-gray-200 bg-white overflow-x-auto shadow-sm dark:border-white/10 dark:bg-white/5">
               <table className="w-full text-xs sm:text-sm min-w-[600px]">
                 <thead className="border-b border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-gray-900/60">
@@ -332,11 +349,11 @@ export default function Attendance() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-white/5">
-                  {history.slice(0, 100).map((r) => {
-                    const opt = STATUS_OPTIONS.find((o) => o.value === r.status)!;
+                  {history.map((r) => {
+                    const opt = STATUS_OPTIONS.find((o) => o.value === r.status) ?? STATUS_OPTIONS[0];
                     return (
-                      <tr key={r.id} className="hover:bg-gray-50/80 dark:hover:bg-white/5">
-                        <td className="px-4 py-3 font-mono text-gray-600 dark:text-gray-300 text-xs">{r.date}</td>
+                      <tr key={r.id} className="hover:bg-gray-50/80 dark:hover:bg-white/5 transition-colors">
+                        <td className="px-4 py-3 font-mono text-xs text-gray-600 dark:text-gray-400">{r.date}</td>
                         <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{r.studentName}</td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${opt.color}`}>
@@ -350,7 +367,7 @@ export default function Attendance() {
                 </tbody>
               </table>
             </div>
-          )}
+          </DataWrapper>
         </div>
       )}
     </div>

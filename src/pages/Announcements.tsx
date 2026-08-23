@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAcademicYear } from "@/contexts/AcademicYearContext";
 import { useTranslation } from "@/lib/i18n";
@@ -18,18 +18,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import RoleGuard from "@/components/RoleGuard";
+import DeleteDialog from "@/components/ui/DeleteDialog";
+import DataWrapper from "@/components/ui/DataWrapper";
+import { SkeletonCard } from "@/components/ui/Skeleton";
+import { Trash2 } from 'lucide-react';
 
-const PRIORITY_META: Record<AnnPriority, { label: string; icon: string; color: string }> = {
-  urgent: { label: "Urgent",  icon: "🔴", color: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-red-500/20 dark:text-red-400 dark:border-red-500/30" },
-  normal: { label: "Normal",  icon: "🟡", color: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-yellow-500/20 dark:text-yellow-400 dark:border-yellow-500/30" },
-  info:   { label: "Info",    icon: "🔵", color: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-400 dark:border-blue-500/30" },
-};
-
-const TARGET_META: Record<AnnouncementTarget, { label: string; icon: string }> = {
-  all:     { label: "Everyone",         icon: "👥" },
-  teacher: { label: "Teachers Only",    icon: "👨‍🏫" },
-  student: { label: "Students & Parents", icon: "👩‍🎓" },
-};
 
 const emptyForm = () => ({
   title: "",
@@ -47,12 +40,26 @@ export default function Announcements() {
   const { activeYear } = useAcademicYear();
   const { t } = useTranslation();
 
+  const PRIORITY_META = useMemo((): Record<AnnPriority, { label: string; icon: string; color: string }> => ({
+    urgent: { label: t("urgent"), icon: "🔴", color: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-red-500/20 dark:text-red-400 dark:border-red-500/30" },
+    normal: { label: t("normal"), icon: "🟡", color: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-yellow-500/20 dark:text-yellow-400 dark:border-yellow-500/30" },
+    info:   { label: t("info"),   icon: "🔵", color: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-400 dark:border-blue-500/30" },
+  }), [t]);
+
+  const TARGET_META = useMemo((): Record<AnnouncementTarget, { label: string; icon: string }> => ({
+    all:     { label: t("all_target"),      icon: "👥" },
+    teacher: { label: t("teachersOnly"),    icon: "👨‍🏫" },
+    student: { label: t("studentsParents"), icon: "👩‍🎓" },
+  }), [t]);
+
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Announcement | null>(null);
   const [form, setForm] = useState(emptyForm());
   const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Announcement | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [search, setSearch] = useState("");
   const [showArchived, setShowArchived] = useState(false);
 
@@ -122,13 +129,21 @@ export default function Announcements() {
     await load();
   };
 
-  const handleDelete = async (ann: Announcement) => {
-    if (!schoolId || !confirm(`Delete "${ann.title}"?`)) return;
+  const handleDelete = (ann: Announcement) => {
+    setDeleteTarget(ann);
+  };
+
+  const confirmDelete = async () => {
+    if (!schoolId || !deleteTarget) return;
+    setDeleting(true);
     try {
-      await deleteDocument(schoolId, "announcements", ann.id);
+      await deleteDocument(schoolId, "announcements", deleteTarget.id);
+      setDeleteTarget(null);
       await load();
     } catch (err) {
       console.error("Error deleting announcement:", err);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -161,7 +176,7 @@ export default function Announcements() {
             onClick={openAdd}
             className="rounded-xl bg-indigo-600 px-3.5 py-2 text-xs sm:text-sm font-semibold text-white hover:bg-indigo-500 shadow-md shadow-indigo-500/20 transition-all self-start sm:self-auto"
           >
-            + {t("newAnnouncement")}
+            {t("newAnnouncement")}
           </button>
         </RoleGuard>
       </div>
@@ -182,14 +197,19 @@ export default function Announcements() {
         </button>
       </div>
 
-      {/* Announcements grid */}
-      {loading ? (
-        <div className="py-16 text-center text-gray-400 text-sm">{t("loading")}</div>
-      ) : filtered.length === 0 ? (
-        <div className="rounded-2xl border border-gray-200 bg-white dark:border-white/10 dark:bg-white/5 py-20 text-center text-gray-400 text-sm">
-          {t("noAnnouncementsFound")}
-        </div>
-      ) : (
+      {/* Announcements List */}
+      <DataWrapper
+        loading={loading}
+        empty={filtered.length === 0}
+        emptyMessage={String(t("noAnnouncementsFound"))}
+        skeleton={
+          <div className="space-y-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <SkeletonCard key={i} className="h-36" />
+            ))}
+          </div>
+        }
+      >
         <div className="space-y-4">
           {filtered.map((ann) => {
             const priority = ann.priority ?? "normal";
@@ -255,9 +275,10 @@ export default function Announcements() {
                       </button>
                       <button
                         onClick={() => handleDelete(ann)}
-                        className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-400 dark:hover:bg-rose-500/20 transition-all shadow-2xs"
+                        className="rounded-lg flex justify-between gap-1 items-center border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-400 dark:hover:bg-rose-500/20 transition-all shadow-2xs"
                       >
-                        🗑 {t("delete")}
+                        <Trash2 size={14} />
+                        {t("delete")}
                       </button>
                     </RoleGuard>
                   </div>
@@ -266,7 +287,7 @@ export default function Announcements() {
             );
           })}
         </div>
-      )}
+      </DataWrapper>
 
       {/* Dialog */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
@@ -374,6 +395,18 @@ export default function Announcements() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteDialog
+        open={!!deleteTarget}
+        title={t("deleteAnnouncement")}
+        description={deleteTarget ? `${t("deleteConfirmMsg")} "${deleteTarget.title}"` : undefined}
+        confirmLabel={String(t("delete"))}
+        cancelLabel={String(t("cancel"))}
+        loading={deleting}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

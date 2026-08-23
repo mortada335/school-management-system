@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useAcademicYear } from "@/contexts/AcademicYearContext";
@@ -13,15 +13,12 @@ import type { Student, Class, Subject, Grade, GradeTerm } from "@/types";
 import { Combobox } from "@/components/ui/combobox";
 import ExcelExport from "@/components/ExcelExport";
 import RoleGuard from "@/components/RoleGuard";
+import DataWrapper from "@/components/ui/DataWrapper";
+import { SkeletonCard, SkeletonTableRow } from "@/components/ui/Skeleton";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 
-const TERMS: { value: GradeTerm; label: string }[] = [
-  { value: "first", label: "First Term" },
-  { value: "second", label: "Second Term" },
-  { value: "final", label: "Final Exam" },
-];
 
 const PASS_THRESHOLD = 0.5;
 
@@ -40,6 +37,12 @@ export default function Grades() {
   const { isDark } = useTheme();
   const { activeYear } = useAcademicYear();
   const { t } = useTranslation();
+
+  const TERMS = useMemo(() => [
+    { value: "first"  as GradeTerm, label: t("firstTerm") },
+    { value: "second" as GradeTerm, label: t("secondTerm") },
+    { value: "final"  as GradeTerm, label: t("finalExam") },
+  ], [t]);
 
   const [classes, setClasses] = useState<Class[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -70,7 +73,6 @@ export default function Grades() {
       const [studs, existingGrades] = await Promise.all([
         fetchCollection<Student>(schoolId, "students", [
           where("classId", "==", selectedClass),
-          orderBy("name"),
         ]),
         fetchCollection<Grade>(schoolId, "grades", [
           where("classId", "==", selectedClass),
@@ -79,6 +81,9 @@ export default function Grades() {
           where("academicYear", "==", activeYear),
         ]),
       ]);
+
+      // Sort client-side — avoids requiring a composite Firestore index
+      studs.sort((a, b) => a.name.localeCompare(b.name));
 
       setStudents(studs);
       const existing: Record<string, string> = {};
@@ -148,10 +153,10 @@ export default function Grades() {
 
   // Score distribution
   const distBuckets = [
-    { label: "0–49", count: validScores.filter((s) => s < 50).length, color: "#ef4444" },
-    { label: "50–69", count: validScores.filter((s) => s >= 50 && s < 70).length, color: "#f59e0b" },
-    { label: "70–89", count: validScores.filter((s) => s >= 70 && s < 90).length, color: "#6366f1" },
-    { label: "90–100", count: validScores.filter((s) => s >= 90).length, color: "#10b981" },
+    { label: "0-49", count: validScores.filter((s) => s < 50).length, color: "#ef4444" },
+    { label: "50-69", count: validScores.filter((s) => s >= 50 && s < 70).length, color: "#f59e0b" },
+    { label: "70-89", count: validScores.filter((s) => s >= 70 && s < 90).length, color: "#6366f1" },
+    { label: "90-100", count: validScores.filter((s) => s >= 90).length, color: "#10b981" },
   ];
 
   // Sorted students for top-3 highlighting
@@ -228,14 +233,31 @@ export default function Grades() {
         <div className="rounded-2xl border border-gray-200 bg-white dark:border-white/10 dark:bg-white/5 py-20 text-center text-gray-400 text-sm">
           {t("selectClassAndSubject")}
         </div>
-      ) : loadingStudents ? (
-        <div className="py-16 text-center text-gray-400 text-sm">{t("loading")}</div>
-      ) : students.length === 0 ? (
-        <div className="rounded-2xl border border-gray-200 bg-white dark:border-white/10 dark:bg-white/5 py-20 text-center text-gray-400 text-sm">
-          {t("noStudentsInClass")}
-        </div>
       ) : (
-        <>
+        <DataWrapper
+          loading={loadingStudents}
+          empty={students.length === 0}
+          emptyMessage={String(t("noStudentsInClass"))}
+          skeleton={
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <SkeletonCard key={i} className="h-20" />
+                ))}
+              </div>
+              <SkeletonCard className="h-40" />
+              <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xs dark:border-white/10 dark:bg-white/5">
+                <table className="w-full text-left text-sm">
+                  <tbody className="divide-y divide-gray-100 dark:divide-white/5">
+                    {Array.from({ length: 6 }).map((_, i) => (
+                      <SkeletonTableRow key={i} cols={6} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          }
+        >
           {/* Class Statistics */}
           {validScores.length > 0 && (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
@@ -341,10 +363,10 @@ export default function Grades() {
               >
                 {saving ? t("saving") : t("saveGrades")}
               </button>
-              {saved && <span className="text-emerald-600 dark:text-green-400 text-xs sm:text-sm font-medium">✓ {t("gradesSaved")}</span>}
+              {saved && <span className="text-emerald-600 dark:text-green-400 text-xs sm:text-sm font-medium">{t("gradesSaved")}</span>}
             </div>
           </RoleGuard>
-        </>
+        </DataWrapper>
       )}
     </div>
   );

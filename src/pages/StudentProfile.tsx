@@ -18,6 +18,8 @@ import {
   CartesianGrid,
   Tooltip,
 } from "recharts";
+import DataWrapper from "@/components/ui/DataWrapper";
+import { SkeletonCard, SkeletonTableRow } from "@/components/ui/Skeleton";
 
 function formatIQD(amount: number) {
   return amount.toLocaleString() + " د.ع";
@@ -108,15 +110,24 @@ export default function StudentProfile() {
   }, [loadData]);
 
   if (loading) {
-    return <div className="py-20 text-center text-gray-400 text-sm">{t("loading")}</div>;
+    return (
+      <div className="space-y-6">
+        <SkeletonCard className="h-44" />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <SkeletonCard key={i} className="h-20" />
+          ))}
+        </div>
+      </div>
+    );
   }
 
   if (!student) {
     return (
       <div className="py-20 text-center">
-        <p className="text-xl font-bold text-gray-900 dark:text-white">Student not found</p>
+        <p className="text-xl font-bold text-gray-900 dark:text-white">{t("studentNotFound")}</p>
         <button onClick={() => navigate("/dashboard/students")} className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-500 shadow-md">
-          ← Back to Students
+          ← {t("backToStudents")}
         </button>
       </div>
     );
@@ -221,7 +232,7 @@ export default function StudentProfile() {
               </div>
               {student.bloodGroup && (
                 <div>
-                  <p className="text-[10px] sm:text-xs text-gray-500">Blood Group</p>
+                  <p className="text-[10px] sm:text-xs text-gray-500">{t("bloodGroup")}</p>
                   <p className="text-gray-900 dark:text-white font-medium">{student.bloodGroup}</p>
                 </div>
               )}
@@ -275,82 +286,83 @@ export default function StudentProfile() {
 
       {/* Grades Tab */}
       {activeTab === "grades" && (
-        <div className="space-y-6">
-          {grades.length === 0 ? (
-            <p className="py-16 text-center text-gray-400 text-sm">{t("noData")}</p>
-          ) : (
-            <>
-              {/* Charts row */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Radar chart by subject */}
+        <DataWrapper
+          loading={false}
+          empty={grades.length === 0}
+          emptyMessage={String(t("noData"))}
+          skeleton={<SkeletonCard className="h-40" />}
+        >
+          <div className="space-y-6">
+            {/* Charts row */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Radar chart by subject */}
+              <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs dark:border-white/10 dark:bg-white/5">
+                <h3 className="text-xs sm:text-sm font-semibold text-gray-600 dark:text-gray-400 mb-4">{t("gradesBySubject")}</h3>
+                <ResponsiveContainer width="100%" height={200}>
+                  <RadarChart data={radarData}>
+                    <PolarGrid stroke={gridStroke} />
+                    <PolarAngleAxis dataKey="subject" tick={{ fill: axisColor, fontSize: 10 }} />
+                    <Radar name="Avg" dataKey="avg" stroke="#6366f1" fill="#6366f1" fillOpacity={0.3} />
+                    <Tooltip contentStyle={tooltipStyle} formatter={(v: number | string | readonly (number | string)[] | undefined) => `${v ?? ""}%`} />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Bar chart by term */}
+              {termBarData.length > 0 && (
                 <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs dark:border-white/10 dark:bg-white/5">
-                  <h3 className="text-xs sm:text-sm font-semibold text-gray-600 dark:text-gray-400 mb-4">{t("gradesBySubject")}</h3>
+                  <h3 className="text-xs sm:text-sm font-semibold text-gray-600 dark:text-gray-400 mb-4">{t("averageScore")} {lang === "ar" ? "حسب الفصل" : "by Term"}</h3>
                   <ResponsiveContainer width="100%" height={200}>
-                    <RadarChart data={radarData}>
-                      <PolarGrid stroke={gridStroke} />
-                      <PolarAngleAxis dataKey="subject" tick={{ fill: axisColor, fontSize: 10 }} />
-                      <Radar name="Avg" dataKey="avg" stroke="#6366f1" fill="#6366f1" fillOpacity={0.3} />
+                    <BarChart data={termBarData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                      <XAxis dataKey="term" tick={{ fill: axisColor, fontSize: 11 }} />
+                      <YAxis domain={[0, 100]} tick={{ fill: axisColor, fontSize: 10 }} unit="%" />
                       <Tooltip contentStyle={tooltipStyle} formatter={(v: number | string | readonly (number | string)[] | undefined) => `${v ?? ""}%`} />
-                    </RadarChart>
+                      <Bar dataKey="avg" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                    </BarChart>
                   </ResponsiveContainer>
                 </div>
+              )}
+            </div>
 
-                {/* Bar chart by term */}
-                {termBarData.length > 0 && (
-                  <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs dark:border-white/10 dark:bg-white/5">
-                    <h3 className="text-xs sm:text-sm font-semibold text-gray-600 dark:text-gray-400 mb-4">{t("averageScore")} {lang === "ar" ? "حسب الفصل" : "by Term"}</h3>
-                    <ResponsiveContainer width="100%" height={200}>
-                      <BarChart data={termBarData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
-                        <XAxis dataKey="term" tick={{ fill: axisColor, fontSize: 11 }} />
-                        <YAxis domain={[0, 100]} tick={{ fill: axisColor, fontSize: 10 }} unit="%" />
-                        <Tooltip contentStyle={tooltipStyle} formatter={(v: number | string | readonly (number | string)[] | undefined) => `${v ?? ""}%`} />
-                        <Bar dataKey="avg" fill="#6366f1" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-              </div>
-
-              {/* Grades table */}
-              <div className="rounded-2xl border border-gray-200 bg-white overflow-x-auto shadow-sm dark:border-white/10 dark:bg-white/5">
-                <table className="w-full text-xs sm:text-sm min-w-[600px]">
-                  <thead className="border-b border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-gray-900/60">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("subjects")}</th>
-                      <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("term")}</th>
-                      <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("score")}</th>
-                      <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("percentage")}</th>
-                      <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("letterGrade")}</th>
-                      <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("result")}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 dark:divide-white/5">
-                    {grades.map((g) => {
-                      const pct = Math.round((g.score / g.maxScore) * 100);
-                      const { letter, color } = letterGrade(g.score, g.maxScore);
-                      const pass = pct >= 50;
-                      return (
-                        <tr key={g.id} className="hover:bg-gray-50/80 dark:hover:bg-white/5">
-                          <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{g.subjectName}</td>
-                          <td className="px-4 py-3 text-gray-600 dark:text-gray-400 text-xs">{g.term === "first" ? t("firstTerm") : g.term === "second" ? t("secondTerm") : t("finalExam")}</td>
-                          <td className="px-4 py-3 font-mono text-gray-900 dark:text-white">{g.score}/{g.maxScore}</td>
-                          <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{pct}%</td>
-                          <td className={`px-4 py-3 font-bold ${color}`}>{letter}</td>
-                          <td className="px-4 py-3">
-                            <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium ${pass ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-green-500/20 dark:text-green-400 dark:border-green-500/30" : "bg-rose-50 text-rose-700 border-rose-200 dark:bg-red-500/20 dark:text-red-400 dark:border-red-500/30"}`}>
-                              {pass ? t("pass") : t("fail")}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-        </div>
+            {/* Grades table */}
+            <div className="rounded-2xl border border-gray-200 bg-white overflow-x-auto shadow-sm dark:border-white/10 dark:bg-white/5">
+              <table className="w-full text-xs sm:text-sm min-w-[600px]">
+                <thead className="border-b border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-gray-900/60">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("subjects")}</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("term")}</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("score")}</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("percentage")}</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("letterGrade")}</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("result")}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-white/5">
+                  {grades.map((g) => {
+                    const pct = Math.round((g.score / g.maxScore) * 100);
+                    const { letter, color } = letterGrade(g.score, g.maxScore);
+                    const pass = pct >= 50;
+                    return (
+                      <tr key={g.id} className="hover:bg-gray-50/80 dark:hover:bg-white/5">
+                        <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{g.subjectName}</td>
+                        <td className="px-4 py-3 text-gray-600 dark:text-gray-400 text-xs">{g.term === "first" ? t("firstTerm") : g.term === "second" ? t("secondTerm") : t("finalExam")}</td>
+                        <td className="px-4 py-3 font-mono text-gray-900 dark:text-white">{g.score}/{g.maxScore}</td>
+                        <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{pct}%</td>
+                        <td className={`px-4 py-3 font-bold ${color}`}>{letter}</td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium ${pass ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-green-500/20 dark:text-green-400 dark:border-green-500/30" : "bg-rose-50 text-rose-700 border-rose-200 dark:bg-red-500/20 dark:text-red-400 dark:border-red-500/30"}`}>
+                            {pass ? t("pass") : t("fail")}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </DataWrapper>
       )}
 
       {/* Attendance Tab */}
@@ -370,40 +382,45 @@ export default function StudentProfile() {
             ))}
           </div>
 
-          <div className="rounded-2xl border border-gray-200 bg-white overflow-x-auto shadow-sm dark:border-white/10 dark:bg-white/5">
-            <table className="w-full text-xs sm:text-sm min-w-[600px]">
-              <thead className="border-b border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-gray-900/60">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("selectDate")}</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("paymentStatus")}</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("notes")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-white/5">
-                {attendance.length === 0 ? (
-                  <tr><td colSpan={3} className="py-10 text-center text-gray-400">{t("noData")}</td></tr>
-                ) : attendance.slice(0, 50).map((a) => {
-                  const statusColors: Record<string, string> = {
-                    present: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-green-500/20 dark:text-green-400 dark:border-green-500/30",
-                    absent: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-red-500/20 dark:text-red-400 dark:border-red-500/30",
-                    late: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-yellow-500/20 dark:text-yellow-400 dark:border-yellow-500/30",
-                    excused: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-400 dark:border-blue-500/30",
-                  };
-                  return (
-                    <tr key={a.id} className="hover:bg-gray-50/80 dark:hover:bg-white/5">
-                      <td className="px-4 py-3 font-mono text-xs sm:text-sm text-gray-700 dark:text-gray-300">{a.date}</td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${statusColors[a.status]}`}>
-                          {t(a.status)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs">{a.notes || "—"}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <DataWrapper
+            loading={false}
+            empty={attendance.length === 0}
+            emptyMessage={String(t("noData"))}
+            skeleton={<SkeletonTableRow cols={3} />}
+          >
+            <div className="rounded-2xl border border-gray-200 bg-white overflow-x-auto shadow-sm dark:border-white/10 dark:bg-white/5">
+              <table className="w-full text-xs sm:text-sm min-w-[600px]">
+                <thead className="border-b border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-gray-900/60">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("selectDate")}</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("paymentStatus")}</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("notes")}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-white/5">
+                  {attendance.slice(0, 50).map((a) => {
+                    const statusColors: Record<string, string> = {
+                      present: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-green-500/20 dark:text-green-400 dark:border-green-500/30",
+                      absent: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-red-500/20 dark:text-red-400 dark:border-red-500/30",
+                      late: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-yellow-500/20 dark:text-yellow-400 dark:border-yellow-500/30",
+                      excused: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-400 dark:border-blue-500/30",
+                    };
+                    return (
+                      <tr key={a.id} className="hover:bg-gray-50/80 dark:hover:bg-white/5">
+                        <td className="px-4 py-3 font-mono text-xs sm:text-sm text-gray-700 dark:text-gray-300">{a.date}</td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${statusColors[a.status]}`}>
+                            {t(a.status)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs">{a.notes || "—"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </DataWrapper>
         </div>
       )}
 
@@ -420,42 +437,39 @@ export default function StudentProfile() {
               <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mt-1">{formatIQD(totalFees - paidFees)}</p>
             </div>
           </div>
-
-          <div className="rounded-2xl border border-gray-200 bg-white overflow-x-auto shadow-sm dark:border-white/10 dark:bg-white/5">
-            <table className="w-full text-xs sm:text-sm min-w-[600px]">
-              <thead className="border-b border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-gray-900/60">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("feeType")}</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("amount")}</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("dueDate")}</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("paymentStatus")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-white/5">
-                {fees.length === 0 ? (
-                  <tr><td colSpan={4} className="py-10 text-center text-gray-400">{t("noData")}</td></tr>
-                ) : fees.map((f) => {
-                  const statusColors: Record<string, string> = {
-                    paid: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-green-500/20 dark:text-green-400 dark:border-green-500/30",
-                    unpaid: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-red-500/20 dark:text-red-400 dark:border-red-500/30",
-                    partial: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-yellow-500/20 dark:text-yellow-400 dark:border-yellow-500/30",
-                  };
-                  return (
+          <DataWrapper
+            loading={false}
+            empty={fees.length === 0}
+            emptyMessage={String(t("noData"))}
+            skeleton={<SkeletonTableRow cols={4} />}
+          >
+            <div className="rounded-2xl border border-gray-200 bg-white overflow-x-auto shadow-sm dark:border-white/10 dark:bg-white/5">
+              <table className="w-full text-xs sm:text-sm min-w-[600px]">
+                <thead className="border-b border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-gray-900/60">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("feeType")}</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("amount")}</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("dueDate")}</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("paymentStatus")}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-white/5">
+                  {fees.map((f) => (
                     <tr key={f.id} className="hover:bg-gray-50/80 dark:hover:bg-white/5">
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{t(f.type)}</td>
-                      <td className="px-4 py-3 font-mono font-bold text-emerald-600 dark:text-emerald-400 text-xs">{formatIQD(f.amount)}</td>
-                      <td className="px-4 py-3 font-mono text-gray-500 dark:text-gray-400 text-xs">{f.dueDate || "—"}</td>
+                      <td className="px-4 py-3 capitalize font-medium text-gray-900 dark:text-white">{f.type}</td>
+                      <td className="px-4 py-3 font-bold text-emerald-600 dark:text-emerald-400">{formatIQD(f.amount)}</td>
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400 font-mono text-xs">{f.dueDate || "—"}</td>
                       <td className="px-4 py-3">
-                        <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${statusColors[f.status]}`}>
-                          {t(f.status)}
+                        <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${f.status === "paid" ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-green-500/20 dark:text-green-400 dark:border-green-500/30" : f.status === "unpaid" ? "bg-rose-50 text-rose-700 border-rose-200 dark:bg-red-500/20 dark:text-red-400 dark:border-red-500/30" : "bg-amber-50 text-amber-700 border-amber-200 dark:bg-yellow-500/20 dark:text-yellow-400 dark:border-yellow-500/30"}`}>
+                          {f.status === "paid" ? t("paid") : f.status === "unpaid" ? t("unpaid") : t("partial")}
                         </span>
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </DataWrapper>
         </div>
       )}
     </div>
