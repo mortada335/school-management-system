@@ -37,14 +37,15 @@ export function Combobox({
 
   useEffect(() => {
     if (staticOptions) {
-      setOptions(staticOptions);
+      const id = setTimeout(() => setOptions(staticOptions), 0);
+      return () => clearTimeout(id);
     }
   }, [staticOptions]);
 
   useEffect(() => {
     if (!fetcher) return;
     let active = true;
-    setLoading(true);
+    const id = setTimeout(() => { if (active) setLoading(true); }, 0);
     fetcher(query)
       .then((res) => {
         if (active) {
@@ -52,12 +53,11 @@ export function Combobox({
           setLoading(false);
         }
       })
-      .catch(() => {
+      .finally(() => {
         if (active) setLoading(false);
+        clearTimeout(id);
       });
-    return () => {
-      active = false;
-    };
+    return () => { active = false; clearTimeout(id); };
   }, [query, fetcher]);
 
   // Click outside listener
@@ -87,7 +87,7 @@ export function Combobox({
         type="button"
         disabled={disabled}
         onClick={() => setOpen((prev) => !prev)}
-        className="flex h-10 w-full items-center justify-between rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex h-10 w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-gray-500 transition-colors"
       >
         <span className="truncate">
           {selectedOption ? selectedOption.label : placeholder}
@@ -96,7 +96,7 @@ export function Combobox({
           xmlns="http://www.w3.org/2000/svg"
           viewBox="0 0 20 20"
           fill="currentColor"
-          className="h-4 w-4 shrink-0 text-gray-400"
+          className="h-4 w-4 shrink-0 text-gray-400 dark:text-gray-400"
         >
           <path
             fillRule="evenodd"
@@ -107,22 +107,22 @@ export function Combobox({
       </button>
 
       {open && (
-        <div className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-white/10 bg-gray-900 p-1 shadow-2xl text-white backdrop-blur">
+        <div className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-gray-200 bg-white p-1 shadow-2xl text-gray-900 dark:border-white/10 dark:bg-gray-900 dark:text-white">
           <div className="p-1">
             <input
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={searchPlaceholder}
-              className="w-full rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-white placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              className="w-full rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-gray-500"
               autoFocus
             />
           </div>
-          <div className="mt-1 divide-y divide-white/5">
+          <div className="mt-1 divide-y divide-gray-100 dark:divide-white/5">
             {loading ? (
-              <div className="py-4 text-center text-xs text-gray-400">Loading options...</div>
+              <div className="py-4 text-center text-xs text-gray-500 dark:text-gray-400">Loading options...</div>
             ) : filteredOptions.length === 0 ? (
-              <div className="py-4 text-center text-xs text-gray-500">{emptyText}</div>
+              <div className="py-4 text-center text-xs text-gray-400 dark:text-gray-500">{emptyText}</div>
             ) : (
               filteredOptions.map((opt) => (
                 <button
@@ -136,12 +136,12 @@ export function Combobox({
                   className={`flex w-full flex-col text-left px-3 py-2 text-xs transition-colors rounded-md ${
                     opt.value === value
                       ? "bg-indigo-600 text-white font-medium"
-                      : "hover:bg-white/10 text-gray-300 hover:text-white"
+                      : "hover:bg-gray-100 text-gray-700 hover:text-gray-900 dark:hover:bg-white/10 dark:text-gray-300 dark:hover:text-white"
                   }`}
                 >
                   <span className="font-medium">{opt.label}</span>
                   {opt.sublabel && (
-                    <span className="text-[10px] text-gray-400">{opt.sublabel}</span>
+                    <span className="text-[10px] text-gray-400 dark:text-gray-400">{opt.sublabel}</span>
                   )}
                 </button>
               ))

@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { currentAcademicYear, getAcademicYears, type AcademicYear } from "@/types";
 import { useAuth } from "@/contexts/AuthContext";
@@ -8,7 +9,8 @@ interface AcademicYearContextType {
   allYears: AcademicYear[];
 }
 
-const AcademicYearContext = createContext<AcademicYearContextType | undefined>(undefined);
+ 
+export const AcademicYearContext = createContext<AcademicYearContextType | undefined>(undefined);
 
 export function AcademicYearProvider({ children }: { children: ReactNode }) {
   const { schoolId } = useAuth();

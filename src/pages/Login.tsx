@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTheme } from "@/contexts/ThemeContext";
+import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +16,8 @@ import {
 
 export default function Login() {
   const { login } = useAuth();
+  const { theme, toggleTheme } = useTheme();
+  const { t, lang, setLang } = useTranslation();
   const navigate = useNavigate();
 
   const [email, setEmail] = useState("");
@@ -36,21 +40,38 @@ export default function Login() {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gray-950 px-4">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-50 dark:bg-gray-950 px-4 transition-colors">
+      {/* Top right quick settings */}
+      <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
+        <button
+          onClick={toggleTheme}
+          className="rounded-xl border border-gray-200 bg-white p-2 text-gray-700 hover:bg-gray-100 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10 transition-colors shadow-2xs"
+          title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
+        >
+          {theme === "dark" ? "☀️" : "🌙"}
+        </button>
+        <button
+          onClick={() => setLang(lang === "ar" ? "en" : "ar")}
+          className="rounded-xl border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-100 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10 transition-colors shadow-2xs"
+        >
+          {lang === "ar" ? "English" : "العربية"}
+        </button>
+      </div>
+
       {/* Ambient gradient blobs */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute -top-32 left-1/2 h-[500px] w-[700px] -translate-x-1/2 rounded-full bg-indigo-600/20 blur-3xl"
+        className="pointer-events-none absolute -top-32 left-1/2 h-[500px] w-[700px] -translate-x-1/2 rounded-full bg-indigo-500/10 dark:bg-indigo-600/20 blur-3xl"
       />
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute bottom-0 right-0 h-[350px] w-[500px] rounded-full bg-violet-600/15 blur-3xl"
+        className="pointer-events-none absolute bottom-0 right-0 h-[350px] w-[500px] rounded-full bg-violet-500/10 dark:bg-violet-600/15 blur-3xl"
       />
 
-      <div className="relative w-full max-w-md">
+      <div className="relative w-full max-w-md my-8">
         {/* Logo / Brand */}
-        <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-600 shadow-lg shadow-indigo-500/40">
+        <div className="mb-6 sm:mb-8 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-600 shadow-lg shadow-indigo-500/30">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 24 24"
@@ -62,39 +83,39 @@ export default function Login() {
               <path d="M5.072 15.282a48.553 48.553 0 0 1 7.664 3.282c-.163.91-.337 1.802-.523 2.676a47.856 47.856 0 0 1-8.107-2.57.75.75 0 0 1-.46-.71 48.462 48.462 0 0 1 .426-2.678Z" />
             </svg>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">
+          <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
             EduSaaS
           </h1>
-          <p className="mt-1 text-sm text-gray-400">
+          <p className="mt-1 text-xs sm:text-sm text-gray-500 dark:text-gray-400">
             School Management Platform
           </p>
         </div>
 
-        <Card className="border-white/10 bg-white/5 shadow-2xl backdrop-blur-xl">
+        <Card className="border-gray-200 bg-white shadow-xl dark:border-white/10 dark:bg-white/5 dark:backdrop-blur-xl">
           <CardHeader className="pb-4">
-            <CardTitle className="text-xl text-white">Welcome back</CardTitle>
-            <CardDescription className="text-gray-400">
+            <CardTitle className="text-lg sm:text-xl text-gray-900 dark:text-white">Welcome back</CardTitle>
+            <CardDescription className="text-gray-500 dark:text-gray-400 text-xs sm:text-sm">
               Sign in to your school account
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-1.5">
-                <Label htmlFor="email" className="text-gray-300">
-                  Email
+                <Label htmlFor="email" className="text-gray-700 dark:text-gray-300 text-xs sm:text-sm">
+                  {t("email")}
                 </Label>
                 <Input
                   id="email"
                   type="email"
-                  placeholder="admin@yourschool.com"
+                  placeholder="admin@school.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="border-white/10 bg-white/5 text-white placeholder:text-gray-600 focus-visible:ring-indigo-500"
+                  className="border-gray-200 bg-gray-50 text-gray-900 placeholder:text-gray-400 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-gray-500 focus-visible:ring-indigo-500 text-sm"
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="password" className="text-gray-300">
+                <Label htmlFor="password" className="text-gray-700 dark:text-gray-300 text-xs sm:text-sm">
                   Password
                 </Label>
                 <Input
@@ -104,12 +125,12 @@ export default function Login() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className="border-white/10 bg-white/5 text-white placeholder:text-gray-600 focus-visible:ring-indigo-500"
+                  className="border-gray-200 bg-gray-50 text-gray-900 placeholder:text-gray-400 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-gray-500 focus-visible:ring-indigo-500 text-sm"
                 />
               </div>
 
               {error && (
-                <p className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-400 border border-red-500/20">
+                <p className="rounded-xl bg-rose-50 text-rose-700 border border-rose-200 px-3 py-2 text-xs sm:text-sm dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20">
                   {error}
                 </p>
               )}
@@ -117,7 +138,7 @@ export default function Login() {
               <Button
                 type="submit"
                 disabled={isLoading}
-                className="w-full bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/30 transition-all"
+                className="w-full bg-indigo-600 text-white hover:bg-indigo-500 shadow-md shadow-indigo-500/30 transition-all text-xs sm:text-sm font-semibold py-2.5 rounded-xl"
               >
                 {isLoading ? (
                   <span className="flex items-center gap-2">
@@ -133,11 +154,11 @@ export default function Login() {
               </Button>
             </form>
 
-            <p className="mt-6 text-center text-sm text-gray-500">
+            <p className="mt-6 text-center text-xs sm:text-sm text-gray-500 dark:text-gray-400">
               New school?{" "}
               <Link
                 to="/signup"
-                className="font-medium text-indigo-400 hover:text-indigo-300 transition-colors"
+                className="font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300 transition-colors"
               >
                 Register your school
               </Link>

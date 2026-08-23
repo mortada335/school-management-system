@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTheme } from "@/contexts/ThemeContext";
 import { useAcademicYear } from "@/contexts/AcademicYearContext";
+import { useTranslation } from "@/lib/i18n";
 import {
   fetchCollection,
   addDocument,
@@ -18,18 +20,24 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Combobox } from "@/components/ui/combobox";
+import ExcelExport from "@/components/ExcelExport";
+import RoleGuard from "@/components/RoleGuard";
+import {
+  PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar,
+  XAxis, YAxis, CartesianGrid, Legend,
+} from "recharts";
 
 const FEE_TYPES: { value: FeeType; label: string }[] = [
-  { value: "tuition", label: "Tuition Fee" },
-  { value: "uniform", label: "Uniform" },
+  { value: "tuition",  label: "Tuition Fee" },
+  { value: "uniform",  label: "Uniform" },
   { value: "activity", label: "Activities & Trips" },
-  { value: "other", label: "Other Fees" },
+  { value: "other",    label: "Other Fees" },
 ];
 
 const FEE_STATUSES: { value: FeeStatus; label: string; color: string }[] = [
-  { value: "paid", label: "Paid", color: "bg-green-500/20 text-green-400 border-green-500/30" },
-  { value: "unpaid", label: "Unpaid", color: "bg-red-500/20 text-red-400 border-red-500/30" },
-  { value: "partial", label: "Partial", color: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30" },
+  { value: "paid",    label: "Paid",    color: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-green-500/20 dark:text-green-400 dark:border-green-500/30" },
+  { value: "unpaid",  label: "Unpaid",  color: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-red-500/20 dark:text-red-400 dark:border-red-500/30" },
+  { value: "partial", label: "Partial", color: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-yellow-500/20 dark:text-yellow-400 dark:border-yellow-500/30" },
 ];
 
 const emptyForm = () => ({
@@ -41,11 +49,18 @@ const emptyForm = () => ({
   status: "unpaid" as FeeStatus,
   dueDate: new Date().toISOString().split("T")[0],
   notes: "",
+  paidAmount: 0,
+  paymentMethod: "" as "cash" | "bank_transfer" | "card" | "",
+  receiptNumber: "",
 });
+
+const PIE_COLORS = ["#10b981", "#6366f1", "#f59e0b", "#94a3b8"];
 
 export default function Fees() {
   const { schoolId } = useAuth();
+  const { isDark } = useTheme();
   const { activeYear } = useAcademicYear();
+  const { t } = useTranslation();
 
   const [fees, setFees] = useState<Fee[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
@@ -56,6 +71,7 @@ export default function Fees() {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [showOverdueOnly, setShowOverdueOnly] = useState(false);
 
   const load = useCallback(async () => {
     if (!schoolId) return;
@@ -79,11 +95,11 @@ export default function Fees() {
       setLoading(false);
     }
   }, [schoolId, activeYear]);
-
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const openAdd = () => { setEditing(null); setForm(emptyForm()); setModalOpen(true); };
-
   const openEdit = (f: Fee) => {
     setEditing(f);
     setForm({
@@ -95,6 +111,9 @@ export default function Fees() {
       status: f.status,
       dueDate: f.dueDate,
       notes: f.notes || "",
+      paidAmount: f.paidAmount ?? 0,
+      paymentMethod: f.paymentMethod ?? "",
+      receiptNumber: f.receiptNumber ?? "",
     });
     setModalOpen(true);
   };
@@ -146,14 +165,38 @@ export default function Fees() {
     }
   };
 
+  const today = new Date().toISOString().split("T")[0];
+
   const filtered = fees.filter((f) => {
     const matchSearch = f.studentName.includes(search);
     const matchStatus = filterStatus === "all" || f.status === filterStatus;
-    return matchSearch && matchStatus;
+    const matchOverdue = !showOverdueOnly || (f.status !== "paid" && f.dueDate < today);
+    return matchSearch && matchStatus && matchOverdue;
   });
 
   const totalAmount = filtered.reduce((acc, f) => acc + (f.amount || 0), 0);
   const paidAmount = filtered.filter((f) => f.status === "paid").reduce((acc, f) => acc + (f.amount || 0), 0);
+  const outstanding = totalAmount - paidAmount;
+  const overdueCount = fees.filter((f) => f.status !== "paid" && f.dueDate && f.dueDate < today).length;
+
+  // Fee type breakdown for pie
+  const typeBreakdown = FEE_TYPES.map((ft) => ({
+    name: ft.label,
+    value: filtered.filter((f) => f.type === ft.value).reduce((a, f) => a + f.amount, 0),
+  })).filter((d) => d.value > 0);
+
+  // Monthly bar data
+  const monthMap: Record<string, { paid: number; unpaid: number }> = {};
+  for (const f of fees) {
+    const key = f.dueDate ? f.dueDate.substring(0, 7) : "—";
+    if (!monthMap[key]) monthMap[key] = { paid: 0, unpaid: 0 };
+    if (f.status === "paid") monthMap[key].paid += f.amount;
+    else monthMap[key].unpaid += f.amount;
+  }
+  const monthBarData = Object.entries(monthMap)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(-6)
+    .map(([m, v]) => ({ month: m.substring(5), ...v }));
 
   const studentOptions = students.map((s) => ({
     value: s.id,
@@ -161,78 +204,185 @@ export default function Fees() {
     sublabel: s.className,
   }));
 
+  const excelData = filtered.map((f) => ({
+    [t("student")]: f.studentName,
+    [t("feeType")]: FEE_TYPES.find((type) => type.value === f.type)?.label ?? f.type,
+    [t("amount")]: f.amount,
+    [t("dueDate")]: f.dueDate,
+    [t("paymentStatus")]: f.status,
+    "Receipt No.": f.receiptNumber ?? "",
+    [t("paymentMethod")]: f.paymentMethod ?? "",
+    [t("notes")]: f.notes,
+  }));
+
+  const gridStroke = isDark ? "#ffffff15" : "#e2e8f0";
+  const axisColor = isDark ? "#9ca3af" : "#64748b";
+  const tooltipStyle = isDark
+    ? { backgroundColor: "#18181b", border: "1px solid #27272a", borderRadius: 12, color: "#fff" }
+    : { backgroundColor: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 12, color: "#0f172a", boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1)" };
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-white">Fees</h2>
-          <p className="text-sm text-gray-400">Fees — {activeYear} (IQD)</p>
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{t("fees")}</h2>
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">{t("schoolFees")} — {activeYear} (IQD)</p>
         </div>
-        <button onClick={openAdd} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/20 transition-all">
-          + Add Fee Record
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <ExcelExport data={excelData} filename="fees" label={t("exportFees")} />
+          <RoleGuard permission="manage:fees">
+            <button onClick={openAdd} className="rounded-xl bg-indigo-600 px-3.5 py-2 text-xs sm:text-sm font-semibold text-white hover:bg-indigo-500 shadow-md shadow-indigo-500/20 transition-all">
+              + {t("addFeeRecord")}
+            </button>
+          </RoleGuard>
+        </div>
       </div>
 
-      {/* Financial Summary */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 p-5">
-          <p className="text-xs font-medium uppercase tracking-widest text-emerald-400">Total Collected</p>
-          <p className="mt-2 text-2xl font-bold text-white">{formatIQD(paidAmount)}</p>
+      {/* 4 KPI Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/70 p-4 sm:p-5 shadow-xs dark:border-emerald-500/30 dark:bg-emerald-500/10">
+          <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">{t("totalCollected")}</p>
+          <p className="mt-1 sm:mt-2 text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{formatIQD(paidAmount)}</p>
         </div>
-        <div className="rounded-2xl border border-indigo-500/30 bg-gradient-to-br from-indigo-500/20 to-indigo-600/10 p-5">
-          <p className="text-xs font-medium uppercase tracking-widest text-indigo-400">Total Billed</p>
-          <p className="mt-2 text-2xl font-bold text-white">{formatIQD(totalAmount)}</p>
+        <div className="rounded-2xl border border-indigo-200/80 bg-indigo-50/70 p-4 sm:p-5 shadow-xs dark:border-indigo-500/30 dark:bg-indigo-500/10">
+          <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-indigo-700 dark:text-indigo-400">{t("totalBilled")}</p>
+          <p className="mt-1 sm:mt-2 text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{formatIQD(totalAmount)}</p>
         </div>
+        <div className="rounded-2xl border border-rose-200/80 bg-rose-50/70 p-4 sm:p-5 shadow-xs dark:border-rose-500/30 dark:bg-rose-500/10">
+          <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-rose-700 dark:text-rose-400">{t("outstanding")}</p>
+          <p className="mt-1 sm:mt-2 text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{formatIQD(outstanding)}</p>
+        </div>
+        <div className="rounded-2xl border border-amber-200/80 bg-amber-50/70 p-4 sm:p-5 shadow-xs dark:border-yellow-500/30 dark:bg-yellow-500/10">
+          <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-400">⚠ {t("overdue")}</p>
+          <p className="mt-1 sm:mt-2 text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{overdueCount}</p>
+        </div>
+      </div>
+
+      {/* Collection Rate */}
+      {totalAmount > 0 && (
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 shadow-xs dark:border-white/10 dark:bg-white/5">
+          <div className="flex justify-between mb-2">
+            <span className="text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300">{t("collectionRate")}</span>
+            <span className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white">{Math.round((paidAmount / totalAmount) * 100)}%</span>
+          </div>
+          <div className="h-3 w-full rounded-full bg-gray-100 dark:bg-white/10 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-emerald-500 transition-all"
+              style={{ width: `${Math.round((paidAmount / totalAmount) * 100)}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Monthly Revenue */}
+        {monthBarData.length > 0 && (
+          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs dark:border-white/10 dark:bg-white/5">
+            <h3 className="text-xs sm:text-sm font-semibold text-gray-600 dark:text-gray-400 mb-4">📊 {t("monthlyRevenue")}</h3>
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={monthBarData} barSize={20}>
+                <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                <XAxis dataKey="month" tick={{ fill: axisColor, fontSize: 11 }} />
+                <YAxis tick={{ fill: axisColor, fontSize: 10 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                <Tooltip contentStyle={tooltipStyle} formatter={(v: number | string | readonly (number | string)[] | undefined) => formatIQD(Number(v ?? 0))} />
+                <Bar dataKey="paid" fill="#10b981" name={t("paid")} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="unpaid" fill="#ef4444" name={t("unpaid")} radius={[4, 4, 0, 0]} />
+                <Legend wrapperStyle={{ fontSize: 11, color: axisColor }} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        {/* Fees by Type */}
+        {typeBreakdown.length > 0 && (
+          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs dark:border-white/10 dark:bg-white/5">
+            <h3 className="text-xs sm:text-sm font-semibold text-gray-600 dark:text-gray-400 mb-4">🍩 {t("feesByType")}</h3>
+            <div className="flex items-center gap-4">
+              <ResponsiveContainer width={160} height={160}>
+                <PieChart>
+                  <Pie data={typeBreakdown} cx="50%" cy="50%" innerRadius={40} outerRadius={65} dataKey="value">
+                    {typeBreakdown.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                  </Pie>
+                  <Tooltip contentStyle={tooltipStyle} formatter={(v: number | string | readonly (number | string)[] | undefined) => formatIQD(Number(v ?? 0))} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="space-y-2 flex-1">
+                {typeBreakdown.map((d, i) => (
+                  <div key={d.name} className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
+                      <span className="text-gray-600 dark:text-gray-300">{d.name}</span>
+                    </div>
+                    <span className="font-bold text-gray-900 dark:text-white">{formatIQD(d.value)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Filters */}
-      <div className="flex gap-3">
+      <div className="flex flex-wrap gap-2.5 sm:gap-3">
         <input
-          placeholder="Search by student name..."
+          placeholder={t("searchStudents")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="max-w-xs rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none placeholder:text-gray-600 focus:border-indigo-500"
+          className="flex-1 max-w-full sm:max-w-xs rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs sm:text-sm text-gray-900 outline-none placeholder:text-gray-400 focus:border-indigo-500 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-gray-500 shadow-2xs"
         />
         <select
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
-          className="rounded-lg border border-white/10 bg-gray-800 px-3 py-2 text-sm text-white outline-none"
+          className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs sm:text-sm text-gray-900 outline-none dark:border-white/10 dark:bg-gray-800 dark:text-white shadow-2xs"
         >
-          <option value="all">All Statuses</option>
-          <option value="paid">Paid</option>
-          <option value="unpaid">Unpaid</option>
-          <option value="partial">Partial</option>
+          <option value="all">{t("allStatuses")}</option>
+          <option value="paid">{t("paid")}</option>
+          <option value="unpaid">{t("unpaid")}</option>
+          <option value="partial">{t("partial")}</option>
         </select>
+        <button
+          onClick={() => setShowOverdueOnly((v) => !v)}
+          className={`rounded-xl border px-3 py-2 text-xs sm:text-sm font-medium transition-all shadow-2xs ${showOverdueOnly ? "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-500/20 dark:text-amber-400 dark:border-amber-500/30" : "border-gray-200 bg-white text-gray-600 hover:text-gray-900 dark:border-white/10 dark:bg-white/5 dark:text-gray-400 dark:hover:text-white"}`}
+        >
+          ⚠ {t("showOverdueOnly")}
+        </button>
       </div>
 
       {/* Table */}
-      <div className="rounded-2xl border border-white/10 overflow-hidden bg-white/5 shadow-xl">
-        <table className="w-full text-sm text-left">
-          <thead className="border-b border-white/10 bg-gray-900/60 backdrop-blur">
+      <div className="rounded-2xl border border-gray-200 bg-white overflow-x-auto shadow-sm dark:border-white/10 dark:bg-white/5">
+        <table className="w-full text-xs sm:text-sm text-left min-w-[800px]">
+          <thead className="border-b border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-gray-900/60">
             <tr>
-              <th className="px-4 py-3.5 text-xs font-bold uppercase tracking-wider text-gray-300">Student</th>
-              <th className="px-4 py-3.5 text-xs font-bold uppercase tracking-wider text-gray-300">Type</th>
-              <th className="px-4 py-3.5 text-xs font-bold uppercase tracking-wider text-gray-300">Amount (IQD)</th>
-              <th className="px-4 py-3.5 text-xs font-bold uppercase tracking-wider text-gray-300">Due Date</th>
-              <th className="px-4 py-3.5 text-xs font-bold uppercase tracking-wider text-gray-300">Status</th>
-              <th className="px-4 py-3.5 text-right text-xs font-bold uppercase tracking-wider text-gray-300">Actions</th>
+              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("student")}</th>
+              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("feeType")}</th>
+              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("amount")}</th>
+              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("dueDate")}</th>
+              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("paymentStatus")}</th>
+              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">Receipt</th>
+              <th className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("actions")}</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-white/5">
+          <tbody className="divide-y divide-gray-100 dark:divide-white/5">
             {loading ? (
-              <tr><td colSpan={6} className="py-16 text-center text-gray-500">Loading fees...</td></tr>
+              <tr><td colSpan={7} className="py-16 text-center text-gray-400">{t("loading")}</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={6} className="py-16 text-center text-gray-600">No fee records found. Click "+ Add Fee Record".</td></tr>
+              <tr><td colSpan={7} className="py-16 text-center text-gray-500 dark:text-gray-400">{t("noFeesFound")}</td></tr>
             ) : filtered.map((f) => {
               const statusMeta = FEE_STATUSES.find((s) => s.value === f.status) ?? FEE_STATUSES[1];
               const typeMeta = FEE_TYPES.find((t) => t.value === f.type);
+              const isOverdue = f.status !== "paid" && f.dueDate && f.dueDate < today;
               return (
-                <tr key={f.id} className="hover:bg-white/5 transition-colors">
-                  <td className="px-4 py-3.5 font-medium text-white">{f.studentName}</td>
-                  <td className="px-4 py-3.5 text-gray-400">{typeMeta?.label || f.type}</td>
-                  <td className="px-4 py-3.5 font-bold text-emerald-400 font-mono text-xs">{formatIQD(f.amount)}</td>
-                  <td className="px-4 py-3.5 text-gray-400 font-mono text-xs">{f.dueDate || "—"}</td>
-                  <td className="px-4 py-3.5">
+                <tr key={f.id} className={`hover:bg-gray-50/80 dark:hover:bg-white/5 transition-colors ${isOverdue ? "bg-amber-50/40 dark:bg-amber-500/5" : ""}`}>
+                  <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
+                    {f.studentName}
+                    {isOverdue && <span className="ml-2 text-[10px] text-amber-600 dark:text-amber-400 border border-amber-300 dark:border-amber-500/30 rounded-full px-1.5 py-0.5 font-normal">⚠ Overdue</span>}
+                  </td>
+                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{typeMeta?.label || f.type}</td>
+                  <td className="px-4 py-3 font-bold text-emerald-600 dark:text-emerald-400 font-mono text-xs sm:text-sm">{formatIQD(f.amount)}</td>
+                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400 font-mono text-xs">{f.dueDate || "—"}</td>
+                  <td className="px-4 py-3">
                     <button
                       onClick={() => togglePaidStatus(f)}
                       className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition-transform active:scale-95 ${statusMeta.color}`}
@@ -240,27 +390,24 @@ export default function Fees() {
                       {statusMeta.label}
                     </button>
                   </td>
-                  <td className="px-4 py-3.5 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => openEdit(f)}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1 text-xs font-medium text-indigo-400 hover:bg-indigo-500/20 hover:text-indigo-300 transition-all active:scale-95"
-                      >
-                        <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-                          <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                        </svg>
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(f)}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-xs font-medium text-rose-400 hover:bg-rose-500/20 hover:text-rose-300 transition-all active:scale-95"
-                      >
-                        <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-                          <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
-                        </svg>
-                        Delete
-                      </button>
-                    </div>
+                  <td className="px-4 py-3 text-gray-500 dark:text-gray-400 font-mono text-xs">{f.receiptNumber || "—"}</td>
+                  <td className="px-4 py-3 text-right">
+                    <RoleGuard permission="manage:fees">
+                      <div className="flex items-center justify-end gap-1.5 sm:gap-2">
+                        <button
+                          onClick={() => openEdit(f)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2 sm:px-2.5 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-400 dark:hover:bg-indigo-500/20 transition-all active:scale-95 shadow-2xs"
+                        >
+                          ✏️ {t("edit")}
+                        </button>
+                        <button
+                          onClick={() => handleDelete(f)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 sm:px-2.5 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-400 dark:hover:bg-rose-500/20 transition-all active:scale-95 shadow-2xs"
+                        >
+                          🗑 {t("delete")}
+                        </button>
+                      </div>
+                    </RoleGuard>
                   </td>
                 </tr>
               );
@@ -269,76 +416,98 @@ export default function Fees() {
         </table>
       </div>
 
-      {/* Shadcn Dialog */}
+      {/* Dialog */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{editing ? "Edit Fee Record" : "Add Fee Record"}</DialogTitle>
+            <DialogTitle>{editing ? t("editFee") : t("addFeeRecord")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-2">
             <div>
-              <label className="block text-xs font-medium text-gray-300 mb-1">Student *</label>
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{t("student")} *</label>
               <Combobox
                 value={form.studentId}
                 onChange={(val) => setForm({ ...form, studentId: val })}
-                placeholder="Search student by name..."
+                placeholder={t("searchStudents")}
                 options={studentOptions}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-300 mb-1">Fee Type</label>
-              <select
-                value={form.type}
-                onChange={(e) => setForm({ ...form, type: e.target.value as FeeType })}
-                className="w-full rounded-lg border border-white/10 bg-gray-800 px-3 py-2 text-sm text-white outline-none"
-              >
-                {FEE_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-300 mb-1">Amount (IQD) *</label>
-              <input
-                type="number"
-                step={5000}
-                placeholder="250000"
-                value={form.amount}
-                onChange={(e) => setForm({ ...form, amount: Number(e.target.value) })}
-                className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white font-mono outline-none focus:border-indigo-500"
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-gray-300 mb-1">Due Date</label>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{t("feeType")}</label>
+                <select
+                  value={form.type}
+                  onChange={(e) => setForm({ ...form, type: e.target.value as FeeType })}
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none dark:border-white/10 dark:bg-gray-800 dark:text-white"
+                >
+                  {FEE_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{t("amount")} (IQD) *</label>
+                <input
+                  type="number"
+                  step={5000}
+                  placeholder="250000"
+                  value={form.amount}
+                  onChange={(e) => setForm({ ...form, amount: Number(e.target.value) })}
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 font-mono outline-none focus:border-indigo-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{t("dueDate")}</label>
                 <input
                   type="date"
                   value={form.dueDate}
                   onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
-                  className="w-full rounded-lg border border-white/10 bg-gray-800 px-3 py-2 text-sm text-white outline-none"
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none dark:border-white/10 dark:bg-gray-800 dark:text-white"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-300 mb-1">Status</label>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{t("paymentStatus")}</label>
                 <select
                   value={form.status}
                   onChange={(e) => setForm({ ...form, status: e.target.value as FeeStatus })}
-                  className="w-full rounded-lg border border-white/10 bg-gray-800 px-3 py-2 text-sm text-white outline-none"
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none dark:border-white/10 dark:bg-gray-800 dark:text-white"
                 >
-                  {FEE_STATUSES.map((s) => (
-                    <option key={s.value} value={s.value}>{s.label}</option>
-                  ))}
+                  {FEE_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                 </select>
               </div>
             </div>
-            <div className="flex justify-end gap-3 pt-4 border-t border-white/10">
-              <button onClick={() => setModalOpen(false)} className="rounded-lg px-4 py-2 text-sm text-gray-400 hover:text-white">Cancel</button>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{t("paymentMethod")}</label>
+                <select
+                  value={form.paymentMethod}
+                  onChange={(e) => setForm({ ...form, paymentMethod: e.target.value as typeof form.paymentMethod })}
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none dark:border-white/10 dark:bg-gray-800 dark:text-white"
+                >
+                  <option value="">—</option>
+                  <option value="cash">{t("cash")}</option>
+                  <option value="bank_transfer">{t("bankTransfer")}</option>
+                  <option value="card">{t("card")}</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{t("receiptNumber")}</label>
+                <input
+                  placeholder="RCP-1001"
+                  value={form.receiptNumber}
+                  onChange={(e) => setForm({ ...form, receiptNumber: e.target.value })}
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 font-mono outline-none focus:border-indigo-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-white/10">
+              <button onClick={() => setModalOpen(false)} className="rounded-lg px-4 py-2 text-sm text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">{t("cancel")}</button>
               <button
                 onClick={handleSave}
                 disabled={saving || !form.studentId || !form.amount}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50 transition-all"
+                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50 transition-all shadow-xs"
               >
-                {saving ? "Saving..." : "Save Record"}
+                {saving ? t("saving") : t("saveFee")}
               </button>
             </div>
           </div>

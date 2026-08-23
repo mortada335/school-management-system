@@ -1,5 +1,6 @@
 // ─── Core Auth Types ────────────────────────────────────────────────────────
 export type Role = "superadmin" | "admin" | "teacher" | "student";
+export type AnnPriority = "urgent" | "normal" | "info";
 
 export interface UserProfile {
   uid: string;
@@ -51,6 +52,10 @@ export interface Class {
   teacherId: string;   // homeroom teacher id
   teacherName: string; // denormalized
   academicYear: AcademicYear;
+  // extended fields
+  capacity?: number;
+  room?: string;
+  schedule?: "morning" | "afternoon";
   schoolId: string;
   createdAt: Date;
 }
@@ -59,6 +64,10 @@ export interface Subject {
   id: string;
   name: string;    // Arabic
   nameEn: string;  // English
+  // extended fields
+  category?: "core" | "elective" | "language";
+  weeklyHours?: number;
+  description?: string;
   schoolId: string;
   createdAt: Date;
 }
@@ -71,6 +80,12 @@ export interface Teacher {
   phone: string;
   subjectIds: string[];
   classIds: string[];
+  // extended fields
+  qualification?: string;
+  specialization?: string;
+  joinDate?: string;
+  status?: "active" | "on-leave" | "resigned";
+  notes?: string;
   schoolId: string;
   createdAt: Date;
 }
@@ -88,6 +103,11 @@ export interface Student {
   guardianName: string;
   guardianPhone: string;
   enrollmentYear: AcademicYear;
+  // extended fields
+  address?: string;
+  bloodGroup?: string;
+  nationalId?: string;
+  notes?: string;
   schoolId: string;
   createdAt: Date;
 }
@@ -101,6 +121,7 @@ export interface AttendanceRecord {
   classId: string;
   date: string;        // "YYYY-MM-DD"
   status: AttendanceStatus;
+  notes?: string;
   academicYear: AcademicYear;
   schoolId: string;
   recordedBy: string;  // uid
@@ -137,6 +158,10 @@ export interface Fee {
   dueDate: string;     // "YYYY-MM-DD"
   paidAt: string | null;
   notes: string;
+  // extended fields
+  paidAmount?: number;
+  paymentMethod?: "cash" | "bank_transfer" | "card" | "";
+  receiptNumber?: string;
   academicYear: AcademicYear;
   schoolId: string;
   createdAt: Date;
@@ -154,6 +179,10 @@ export interface Announcement {
   createdBy: string;      // uid
   createdByName: string;  // denormalized
   academicYear: AcademicYear;
+  // extended fields
+  priority?: AnnPriority;
+  pinned?: boolean;
+  expiresAt?: string;
   schoolId: string;
   createdAt: Date;
 }

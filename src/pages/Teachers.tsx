@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTranslation } from "@/lib/i18n";
 import {
   fetchCollection,
   addDocument,
@@ -7,32 +8,74 @@ import {
   deleteDocument,
   orderBy,
 } from "@/lib/firestore-helpers";
-import type { Teacher } from "@/types";
+import type { Teacher, Subject } from "@/types";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import ExcelExport from "@/components/ExcelExport";
+import RoleGuard from "@/components/RoleGuard";
 
-const emptyForm = () => ({ name: "", nameEn: "", email: "", phone: "" });
+const emptyForm = () => ({
+  name: "",
+  nameEn: "",
+  email: "",
+  phone: "",
+  qualification: "",
+  specialization: "",
+  joinDate: "",
+  status: "active" as "active" | "on-leave" | "resigned",
+  notes: "",
+  subjectIds: [] as string[],
+  classIds: [] as string[],
+});
+
+function TeacherAvatar({ name }: { name: string }) {
+  const initials = name
+    .split(" ")
+    .map((n) => n[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+  return (
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-violet-600 to-indigo-600 text-sm font-bold text-white shadow">
+      {initials}
+    </div>
+  );
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  active: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+  "on-leave": "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+  resigned: "bg-rose-500/20 text-rose-400 border-rose-500/30",
+};
 
 export default function Teachers() {
   const { schoolId } = useAuth();
+  const { t } = useTranslation();
   const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [allSubjects, setAllSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Teacher | null>(null);
   const [form, setForm] = useState(emptyForm());
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [assignTarget, setAssignTarget] = useState<Teacher | null>(null);
+  const [assignSubjectIds, setAssignSubjectIds] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     if (!schoolId) return;
-    setLoading(true);
     try {
-      const data = await fetchCollection<Teacher>(schoolId, "teachers", [orderBy("name")]);
+      const [data, subj] = await Promise.all([
+        fetchCollection<Teacher>(schoolId, "teachers", [orderBy("name")]),
+        fetchCollection<Subject>(schoolId, "subjects", [orderBy("name")]),
+      ]);
       setTeachers(data);
+      setAllSubjects(subj);
     } catch (err) {
       console.error("Error loading teachers:", err);
     } finally {
@@ -40,13 +83,47 @@ export default function Teachers() {
     }
   }, [schoolId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const id = setTimeout(() => load(), 0);
+    return () => clearTimeout(id);
+  }, [load]);
 
   const openAdd = () => { setEditing(null); setForm(emptyForm()); setModalOpen(true); };
   const openEdit = (t: Teacher) => {
     setEditing(t);
-    setForm({ name: t.name, nameEn: t.nameEn, email: t.email, phone: t.phone });
+    setForm({
+      name: t.name,
+      nameEn: t.nameEn,
+      email: t.email,
+      phone: t.phone,
+      qualification: t.qualification ?? "",
+      specialization: t.specialization ?? "",
+      joinDate: t.joinDate ?? "",
+      status: t.status ?? "active",
+      notes: t.notes ?? "",
+      subjectIds: t.subjectIds ?? [],
+      classIds: t.classIds ?? [],
+    });
     setModalOpen(true);
+  };
+
+  const openAssign = (teacher: Teacher) => {
+    setAssignTarget(teacher);
+    setAssignSubjectIds(teacher.subjectIds ?? []);
+    setAssignModalOpen(true);
+  };
+
+  const handleSaveAssignment = async () => {
+    if (!schoolId || !assignTarget) return;
+    await updateDocument(schoolId, "teachers", assignTarget.id, { subjectIds: assignSubjectIds });
+    setAssignModalOpen(false);
+    await load();
+  };
+
+  const toggleSubject = (id: string) => {
+    setAssignSubjectIds((prev) =>
+      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
+    );
   };
 
   const handleSave = async () => {
@@ -56,7 +133,7 @@ export default function Teachers() {
       if (editing) {
         await updateDocument(schoolId, "teachers", editing.id, form);
       } else {
-        await addDocument(schoolId, "teachers", { ...form, subjectIds: [], classIds: [] });
+        await addDocument(schoolId, "teachers", { ...form });
       }
       setModalOpen(false);
       await load();
@@ -67,10 +144,10 @@ export default function Teachers() {
     }
   };
 
-  const handleDelete = async (t: Teacher) => {
-    if (!schoolId || !confirm(`Delete teacher "${t.name}"?`)) return;
+  const handleDelete = async (teacher: Teacher) => {
+    if (!schoolId || !confirm(`Delete teacher "${teacher.name}"?`)) return;
     try {
-      await deleteDocument(schoolId, "teachers", t.id);
+      await deleteDocument(schoolId, "teachers", teacher.id);
       await load();
     } catch (err) {
       console.error("Error deleting teacher:", err);
@@ -78,125 +155,268 @@ export default function Teachers() {
   };
 
   const filtered = teachers.filter((t) =>
-    t.name.includes(search) || t.nameEn.toLowerCase().includes(search.toLowerCase()) || t.email.toLowerCase().includes(search.toLowerCase())
+    t.name.includes(search) ||
+    t.nameEn.toLowerCase().includes(search.toLowerCase()) ||
+    t.email.toLowerCase().includes(search.toLowerCase()) ||
+    (t.specialization ?? "").includes(search)
   );
+
+  const excelData = filtered.map((t) => ({
+    [t.name]: t.name,
+    "Name (Secondary)": t.nameEn,
+    [t.email || "Email"]: t.email,
+    [t.phone || "Phone"]: t.phone,
+    Specialization: t.specialization ?? "",
+    Qualification: t.qualification ?? "",
+    Status: t.status ?? "active",
+    Subjects: (t.subjectIds ?? []).length,
+  }));
+
+  const assignedCount = teachers.filter((t) => (t.subjectIds ?? []).length > 0).length;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-white">Teachers</h2>
-          <p className="text-sm text-gray-400">Faculty Members ({teachers.length})</p>
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{t("teachers")}</h2>
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">{t("facultyMembers")} ({teachers.length})</p>
         </div>
-        <button onClick={openAdd} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/20 transition-all">
-          + Add Teacher
-        </button>
+        <RoleGuard permission="manage:teachers">
+          <button onClick={openAdd} className="rounded-lg bg-indigo-600 px-3.5 py-2 text-xs sm:text-sm font-medium text-white hover:bg-indigo-500 shadow-md shadow-indigo-500/20 transition-all self-start sm:self-auto">
+            + {t("addTeacher")}
+          </button>
+        </RoleGuard>
       </div>
 
-      <input
-        placeholder="Search by name or email..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="max-w-xs rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none placeholder:text-gray-600 focus:border-indigo-500"
-      />
+      {/* Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+        <div className="rounded-2xl border border-violet-200/80 bg-violet-50/70 p-3.5 sm:p-4 text-center dark:border-violet-500/30 dark:bg-violet-500/10 shadow-xs">
+          <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{teachers.length}</p>
+          <p className="text-[10px] sm:text-xs text-gray-600 dark:text-gray-400 mt-0.5">{t("totalTeachers")}</p>
+        </div>
+        <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/70 p-3.5 sm:p-4 text-center dark:border-emerald-500/30 dark:bg-emerald-500/10 shadow-xs">
+          <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{assignedCount}</p>
+          <p className="text-[10px] sm:text-xs text-gray-600 dark:text-gray-400 mt-0.5">{t("assigned")}</p>
+        </div>
+        <div className="rounded-2xl border border-amber-200/80 bg-amber-50/70 p-3.5 sm:p-4 text-center dark:border-yellow-500/30 dark:bg-yellow-500/10 shadow-xs">
+          <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{teachers.length - assignedCount}</p>
+          <p className="text-[10px] sm:text-xs text-gray-600 dark:text-gray-400 mt-0.5">{t("unassigned")}</p>
+        </div>
+        <div className="rounded-2xl border border-cyan-200/80 bg-cyan-50/70 p-3.5 sm:p-4 text-center dark:border-cyan-500/30 dark:bg-cyan-500/10 shadow-xs">
+          <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{allSubjects.length}</p>
+          <p className="text-[10px] sm:text-xs text-gray-600 dark:text-gray-400 mt-0.5">{t("subjects")}</p>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <input
+          placeholder={t("searchTeachers")}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="flex-1 max-w-full sm:max-w-xs rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs sm:text-sm text-gray-900 outline-none placeholder:text-gray-400 focus:border-indigo-500 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-gray-500 shadow-2xs"
+        />
+        <ExcelExport data={excelData} filename="teachers" label={t("exportExcel")} />
+      </div>
 
       {/* Table */}
-      <div className="rounded-2xl border border-white/10 overflow-hidden bg-white/5 shadow-xl">
-        <table className="w-full text-sm text-left">
-          <thead className="border-b border-white/10 bg-gray-900/60 backdrop-blur">
+      <div className="rounded-2xl border border-gray-200 bg-white overflow-x-auto shadow-sm dark:border-white/10 dark:bg-white/5">
+        <table className="w-full text-xs sm:text-sm text-left min-w-[800px]">
+          <thead className="border-b border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-gray-900/60">
             <tr>
-              <th className="px-4 py-3.5 text-xs font-bold uppercase tracking-wider text-gray-300">Teacher</th>
-              <th className="px-4 py-3.5 text-xs font-bold uppercase tracking-wider text-gray-300">Email</th>
-              <th className="px-4 py-3.5 text-xs font-bold uppercase tracking-wider text-gray-300">Phone</th>
-              <th className="px-4 py-3.5 text-right text-xs font-bold uppercase tracking-wider text-gray-300">Actions</th>
+              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("teachers")}</th>
+              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("email")}</th>
+              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("specialization")}</th>
+              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("subjects")}</th>
+              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("status")}</th>
+              <th className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("actions")}</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-white/5">
+          <tbody className="divide-y divide-gray-100 dark:divide-white/5">
             {loading ? (
-              <tr><td colSpan={4} className="py-16 text-center text-gray-500">Loading teachers...</td></tr>
+              <tr><td colSpan={6} className="py-16 text-center text-gray-400">{t("loading")}</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={4} className="py-16 text-center text-gray-600">No teachers found. Click "+ Add Teacher".</td></tr>
-            ) : filtered.map((t) => (
-              <tr key={t.id} className="hover:bg-white/5 transition-colors">
-                <td className="px-4 py-3.5">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-tr from-violet-600 to-indigo-600 text-xs font-bold text-white shadow-sm">
-                      {t.name.charAt(0)}
+              <tr><td colSpan={6} className="py-16 text-center text-gray-500 dark:text-gray-400">{t("noTeachersFound")}</td></tr>
+            ) : filtered.map((teacher) => {
+              const subjectNames = (teacher.subjectIds ?? [])
+                .map((id) => allSubjects.find((s) => s.id === id)?.name)
+                .filter(Boolean);
+              return (
+                <tr key={teacher.id} className="hover:bg-gray-50/80 dark:hover:bg-white/5 transition-colors">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <TeacherAvatar name={teacher.name} />
+                      <div>
+                        <p className="font-medium text-gray-900 dark:text-white">{teacher.name}</p>
+                        {teacher.nameEn && <p className="text-xs text-gray-500 dark:text-gray-400">{teacher.nameEn}</p>}
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-medium text-white">{t.name}</p>
-                      {t.nameEn && <p className="text-xs text-gray-500">{t.nameEn}</p>}
+                  </td>
+                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400 font-mono text-xs">{teacher.email || "—"}</td>
+                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400 text-xs">{teacher.specialization || "—"}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-1">
+                      {subjectNames.length === 0 ? (
+                        <span className="text-gray-400 text-xs">—</span>
+                      ) : subjectNames.slice(0, 3).map((name, i) => (
+                        <span key={i} className="rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 dark:bg-indigo-500/20 dark:border-indigo-500/30 dark:text-indigo-300 px-2 py-0.5 text-[10px] font-medium">
+                          {name}
+                        </span>
+                      ))}
                     </div>
-                  </div>
-                </td>
-                <td className="px-4 py-3.5 text-gray-400 font-mono text-xs">{t.email || "—"}</td>
-                <td className="px-4 py-3.5 text-gray-400 font-mono text-xs">{t.phone || "—"}</td>
-                <td className="px-4 py-3.5 text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    <button
-                      onClick={() => openEdit(t)}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1 text-xs font-medium text-indigo-400 hover:bg-indigo-500/20 hover:text-indigo-300 transition-all active:scale-95"
-                    >
-                      <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-                        <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                      </svg>
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDelete(t)}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-xs font-medium text-rose-400 hover:bg-rose-500/20 hover:text-rose-300 transition-all active:scale-95"
-                    >
-                      <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
-                      </svg>
-                      Delete
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${STATUS_COLORS[teacher.status ?? "active"]}`}>
+                      {teacher.status === "active" ? t("active") : teacher.status === "on-leave" ? t("onLeave") : t("resigned")}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-1.5 sm:gap-2">
+                      <RoleGuard permission="manage:teachers">
+                        <button
+                          onClick={() => openAssign(teacher)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2 sm:px-2.5 py-1 text-xs font-medium text-violet-700 hover:bg-violet-100 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-400 dark:hover:bg-violet-500/20 transition-all"
+                        >
+                          📚 {t("assignSubjects")}
+                        </button>
+                        <button
+                          onClick={() => openEdit(teacher)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2 sm:px-2.5 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-400 dark:hover:bg-indigo-500/20 transition-all active:scale-95"
+                        >
+                          ✏️ {t("edit")}
+                        </button>
+                        <button
+                          onClick={() => handleDelete(teacher)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 sm:px-2.5 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-400 dark:hover:bg-rose-500/20 transition-all active:scale-95"
+                        >
+                          🗑 {t("delete")}
+                        </button>
+                      </RoleGuard>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
 
-      {/* Shadcn Dialog */}
+      {/* Add/Edit Dialog */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{editing ? "Edit Teacher" : "Add Teacher"}</DialogTitle>
+            <DialogTitle>{editing ? t("editTeacher") : t("addTeacher")}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div>
-              <label className="block text-xs font-medium text-gray-300 mb-1">Full Name *</label>
-              <input placeholder="Ahmed Ali Al-Karimi" value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500" />
+          <div className="space-y-4 pt-2 max-h-[70vh] overflow-y-auto pr-1">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{t("fullName")} *</label>
+                <input placeholder="أحمد علي الكريمي" value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:border-indigo-500 dark:border-white/10 dark:bg-white/5 dark:text-white" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{t("secondaryName")}</label>
+                <input placeholder="A. Al-Karimi" value={form.nameEn}
+                  onChange={(e) => setForm({ ...form, nameEn: e.target.value })}
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:border-indigo-500 dark:border-white/10 dark:bg-white/5 dark:text-white" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{t("email")}</label>
+                <input type="email" placeholder="teacher@school.com" value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:border-indigo-500 dark:border-white/10 dark:bg-white/5 dark:text-white" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{t("phone")}</label>
+                <input placeholder="07xx-xxx-xxxx" value={form.phone}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:border-indigo-500 dark:border-white/10 dark:bg-white/5 dark:text-white" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{t("specialization")}</label>
+                <input placeholder="الرياضيات" value={form.specialization}
+                  onChange={(e) => setForm({ ...form, specialization: e.target.value })}
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:border-indigo-500 dark:border-white/10 dark:bg-white/5 dark:text-white" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{t("qualification")}</label>
+                <select value={form.qualification} onChange={(e) => setForm({ ...form, qualification: e.target.value })}
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none dark:border-white/10 dark:bg-gray-800 dark:text-white">
+                  <option value="">—</option>
+                  <option value="بكالوريوس">بكالوريوس</option>
+                  <option value="ماجستير">ماجستير</option>
+                  <option value="دكتوراه">دكتوراه</option>
+                  <option value="دبلوم">دبلوم</option>
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{t("joinDate")}</label>
+                <input type="date" value={form.joinDate}
+                  onChange={(e) => setForm({ ...form, joinDate: e.target.value })}
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none dark:border-white/10 dark:bg-gray-800 dark:text-white" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{t("status")}</label>
+                <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as "active" | "on-leave" | "resigned" })}
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none dark:border-white/10 dark:bg-gray-800 dark:text-white">
+                  <option value="active">{t("active")}</option>
+                  <option value="on-leave">{t("onLeave")}</option>
+                  <option value="resigned">{t("resigned")}</option>
+                </select>
+              </div>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-300 mb-1">Secondary / Code Name</label>
-              <input placeholder="A. Al-Karimi" value={form.nameEn}
-                onChange={(e) => setForm({ ...form, nameEn: e.target.value })}
-                className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500" />
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{t("notes")} ({t("optional")})</label>
+              <textarea rows={2} value={form.notes}
+                onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:border-indigo-500 dark:border-white/10 dark:bg-white/5 dark:text-white" />
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-300 mb-1">Email</label>
-              <input type="email" placeholder="teacher@school.com" value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-300 mb-1">Phone</label>
-              <input placeholder="07xx-xxx-xxxx" value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500" />
-            </div>
-            <div className="flex justify-end gap-3 pt-4 border-t border-white/10">
-              <button onClick={() => setModalOpen(false)} className="rounded-lg px-4 py-2 text-sm text-gray-400 hover:text-white">Cancel</button>
+            <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-white/10">
+              <button onClick={() => setModalOpen(false)} className="rounded-lg px-4 py-2 text-sm text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">{t("cancel")}</button>
               <button onClick={handleSave} disabled={saving || !form.name}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50 transition-all">
-                {saving ? "Saving..." : "Save Teacher"}
+                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50 transition-all shadow-xs">
+                {saving ? t("saving") : t("saveTeacher")}
               </button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign Subjects Dialog */}
+      <Dialog open={assignModalOpen} onOpenChange={setAssignModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("assignSubjects")} — {assignTarget?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 pt-2 max-h-80 overflow-y-auto">
+            {allSubjects.map((subj) => (
+              <label key={subj.id} className="flex items-center gap-3 cursor-pointer rounded-xl border border-gray-200 bg-gray-50 p-3 hover:bg-gray-100 dark:border-white/5 dark:bg-white/5 dark:hover:bg-white/10 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={assignSubjectIds.includes(subj.id)}
+                  onChange={() => toggleSubject(subj.id)}
+                  className="w-4 h-4 rounded accent-indigo-600"
+                />
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">{subj.name}</p>
+                  {subj.nameEn && <p className="text-xs text-gray-500 dark:text-gray-400">{subj.nameEn}</p>}
+                </div>
+              </label>
+            ))}
+          </div>
+          <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-white/10">
+            <button onClick={() => setAssignModalOpen(false)} className="rounded-lg px-4 py-2 text-sm text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">{t("cancel")}</button>
+            <button onClick={handleSaveAssignment} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 transition-all shadow-xs">
+              {t("save")}
+            </button>
           </div>
         </DialogContent>
       </Dialog>

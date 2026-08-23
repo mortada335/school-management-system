@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import {
   createContext,
   useContext,
@@ -43,7 +44,8 @@ interface AuthContextType {
   refreshProfile: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+ 
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -54,24 +56,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Helper to fetch user profile + school document
   const fetchUserProfileAndSchool = useCallback(async (uid: string) => {
     try {
-      console.log("📄 [Firestore] Fetching profile at: users/", uid);
+      // console.log("📄 [Firestore] Fetching profile at: users/", uid);
       const profileRef = doc(db, "users", uid);
       const profileSnap = await getDoc(profileRef);
 
       if (profileSnap.exists()) {
         const data = profileSnap.data() as UserProfile;
-        console.log("📄 [Firestore] Profile loaded successfully:", data);
+        // console.log("📄 [Firestore] Profile loaded successfully:", data);
         setProfile(data);
 
         // Fetch school
         if (data.schoolId) {
-          console.log("🏫 [Firestore] Fetching school at: schools/", data.schoolId);
+          // console.log("🏫 [Firestore] Fetching school at: schools/", data.schoolId);
           const schoolRef = doc(db, "schools", data.schoolId);
           const schoolSnap = await getDoc(schoolRef);
 
           if (schoolSnap.exists()) {
             const schoolData = { id: schoolSnap.id, ...schoolSnap.data() } as School;
-            console.log("🏫 [Firestore] School loaded successfully:", schoolData);
+            // console.log("🏫 [Firestore] School loaded successfully:", schoolData);
             setSchool(schoolData);
           } else {
             console.warn("🏫 [Firestore] School doc missing for ID:", data.schoolId);
@@ -98,7 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
-      console.log("🔥 [Auth] onAuthStateChanged:", firebaseUser ? firebaseUser.uid : "No user");
+      // console.log("🔥 [Auth] onAuthStateChanged:", firebaseUser ? firebaseUser.uid : "No user");
       setUser(firebaseUser);
 
       if (firebaseUser) {
@@ -151,7 +153,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ownerUid: uid,
         createdAt: serverTimestamp(),
       });
-      console.log("🏫 [Signup] Created school document:", finalSchoolId);
+      // console.log("🏫 [Signup] Created school document:", finalSchoolId);
     } else if (existingSchoolId) {
       finalSchoolId = existingSchoolId;
     } else {
@@ -169,7 +171,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     await setDoc(doc(db, "users", uid), profileData);
-    console.log("📄 [Signup] Created user profile document for UID:", uid);
+    // console.log("📄 [Signup] Created user profile document for UID:", uid);
 
     // 4. Force immediate state synchronization
     await fetchUserProfileAndSchool(uid);

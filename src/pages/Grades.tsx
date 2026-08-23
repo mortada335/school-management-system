@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTheme } from "@/contexts/ThemeContext";
 import { useAcademicYear } from "@/contexts/AcademicYearContext";
+import { useTranslation } from "@/lib/i18n";
 import {
   fetchCollection,
   batchSetDocuments,
@@ -9,6 +11,11 @@ import {
 } from "@/lib/firestore-helpers";
 import type { Student, Class, Subject, Grade, GradeTerm } from "@/types";
 import { Combobox } from "@/components/ui/combobox";
+import ExcelExport from "@/components/ExcelExport";
+import RoleGuard from "@/components/RoleGuard";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
+} from "recharts";
 
 const TERMS: { value: GradeTerm; label: string }[] = [
   { value: "first", label: "First Term" },
@@ -18,9 +25,21 @@ const TERMS: { value: GradeTerm; label: string }[] = [
 
 const PASS_THRESHOLD = 0.5;
 
+function letterGrade(score: number, max: number): { letter: string; color: string } {
+  const pct = (score / max) * 100;
+  if (pct >= 90) return { letter: "A+", color: "text-emerald-600 dark:text-emerald-400" };
+  if (pct >= 80) return { letter: "A",  color: "text-emerald-600 dark:text-emerald-400" };
+  if (pct >= 70) return { letter: "B",  color: "text-blue-600 dark:text-blue-400" };
+  if (pct >= 60) return { letter: "C",  color: "text-amber-600 dark:text-yellow-400" };
+  if (pct >= 50) return { letter: "D",  color: "text-orange-600 dark:text-orange-400" };
+  return { letter: "F", color: "text-rose-600 dark:text-rose-400" };
+}
+
 export default function Grades() {
   const { schoolId, user } = useAuth();
+  const { isDark } = useTheme();
   const { activeYear } = useAcademicYear();
+  const { t } = useTranslation();
 
   const [classes, setClasses] = useState<Class[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -74,7 +93,9 @@ export default function Grades() {
     }
   }, [schoolId, selectedClass, selectedSubject, selectedTerm, activeYear]);
 
-  useEffect(() => { loadGrades(); }, [loadGrades]);
+  useEffect(() => {
+    loadGrades();
+  }, [loadGrades]);
 
   const handleSave = async () => {
     if (!schoolId || !selectedClass || !selectedSubject || students.length === 0) return;
@@ -113,123 +134,217 @@ export default function Grades() {
     return Math.round((n / maxScore) * 100);
   };
 
-  const isPassing = (score: string) => {
-    const p = getPercent(score);
-    return p !== null && p >= PASS_THRESHOLD * 100;
-  };
-
   const ready = selectedClass && selectedSubject;
+
+  // Class statistics
+  const validScores = students
+    .filter((s) => scores[s.id] !== "" && !isNaN(Number(scores[s.id])))
+    .map((s) => Number(scores[s.id]));
+
+  const classAvg = validScores.length ? Math.round(validScores.reduce((a, b) => a + b, 0) / validScores.length) : null;
+  const classMax = validScores.length ? Math.max(...validScores) : null;
+  const classMin = validScores.length ? Math.min(...validScores) : null;
+  const passCount = validScores.filter((s) => s / maxScore >= PASS_THRESHOLD).length;
+
+  // Score distribution
+  const distBuckets = [
+    { label: "0–49", count: validScores.filter((s) => s < 50).length, color: "#ef4444" },
+    { label: "50–69", count: validScores.filter((s) => s >= 50 && s < 70).length, color: "#f59e0b" },
+    { label: "70–89", count: validScores.filter((s) => s >= 70 && s < 90).length, color: "#6366f1" },
+    { label: "90–100", count: validScores.filter((s) => s >= 90).length, color: "#10b981" },
+  ];
+
+  // Sorted students for top-3 highlighting
+  const sortedStudentIds = [...students]
+    .filter((s) => scores[s.id] !== "" && !isNaN(Number(scores[s.id])))
+    .sort((a, b) => Number(scores[b.id]) - Number(scores[a.id]))
+    .map((s) => s.id);
 
   const classOptions = classes.map((c) => ({ value: c.id, label: c.name, sublabel: c.nameEn }));
   const subjectOptions = subjects.map((s) => ({ value: s.id, label: s.name, sublabel: s.nameEn }));
 
+  const excelData = students.map((s, i) => {
+    const pct = getPercent(scores[s.id] ?? "");
+    const { letter } = letterGrade(Number(scores[s.id]) || 0, maxScore);
+    return {
+      "#": i + 1,
+      [t("name")]: s.name,
+      [t("score")]: scores[s.id] || "—",
+      [t("percentage")]: pct !== null ? `${pct}%` : "—",
+      [t("letterGrade")]: scores[s.id] ? letter : "—",
+      [t("result")]: pct !== null ? (pct >= 50 ? t("pass") : t("fail")) : "—",
+    };
+  });
+
+  const gridStroke = isDark ? "#ffffff15" : "#e2e8f0";
+  const axisColor = isDark ? "#9ca3af" : "#64748b";
+  const tooltipStyle = isDark
+    ? { backgroundColor: "#18181b", border: "1px solid #27272a", borderRadius: 12, color: "#fff" }
+    : { backgroundColor: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 12, color: "#0f172a", boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1)" };
+
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-white">الدرجات والنتائج</h2>
-        <p className="text-sm text-gray-400">Grades — {activeYear}</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{t("grades")}</h2>
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">{t("gradesResults")} — {activeYear}</p>
+        </div>
+        <ExcelExport data={excelData} filename="grades" label={t("exportGrades")} />
       </div>
 
       {/* Controls */}
-      <div className="flex flex-wrap gap-4">
-        <div className="flex-1 min-w-44">
-          <label className="block text-xs text-gray-400 mb-1">Class</label>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+        <div>
+          <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{t("class")}</label>
           <Combobox
             value={selectedClass}
             onChange={setSelectedClass}
-            placeholder="Select class..."
+            placeholder={t("selectClass")}
             options={classOptions}
           />
         </div>
-        <div className="flex-1 min-w-44">
-          <label className="block text-xs text-gray-400 mb-1">Subject</label>
+        <div>
+          <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{t("subjects")}</label>
           <Combobox
             value={selectedSubject}
             onChange={setSelectedSubject}
-            placeholder="Select subject..."
+            placeholder={t("selectClass")}
             options={subjectOptions}
           />
         </div>
         <div>
-          <label className="block text-xs text-gray-400 mb-1">Term</label>
+          <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{t("term")}</label>
           <select
             value={selectedTerm}
             onChange={(e) => setSelectedTerm(e.target.value as GradeTerm)}
-            className="w-44 rounded-lg border border-white/10 bg-gray-800 px-3 py-2 text-sm text-white outline-none"
+            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs sm:text-sm text-gray-900 outline-none dark:border-white/10 dark:bg-gray-800 dark:text-white shadow-2xs"
           >
-            {TERMS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+            {TERMS.map((term) => <option key={term.value} value={term.value}>{t(term.value === "first" ? "firstTerm" : term.value === "second" ? "secondTerm" : "finalExam") || term.label}</option>)}
           </select>
         </div>
       </div>
 
       {!ready ? (
-        <div className="rounded-2xl border border-white/10 bg-white/5 py-20 text-center text-gray-500">
-          Select a class and subject to enter grades.
+        <div className="rounded-2xl border border-gray-200 bg-white dark:border-white/10 dark:bg-white/5 py-20 text-center text-gray-400 text-sm">
+          {t("selectClassAndSubject")}
         </div>
       ) : loadingStudents ? (
-        <div className="py-16 text-center text-gray-500">Loading students...</div>
+        <div className="py-16 text-center text-gray-400 text-sm">{t("loading")}</div>
       ) : students.length === 0 ? (
-        <div className="rounded-2xl border border-white/10 bg-white/5 py-20 text-center text-gray-500">
-          No students in this class. Click "+ Add Student" on the Students page.
+        <div className="rounded-2xl border border-gray-200 bg-white dark:border-white/10 dark:bg-white/5 py-20 text-center text-gray-400 text-sm">
+          {t("noStudentsInClass")}
         </div>
       ) : (
-        <div className="rounded-2xl border border-white/10 overflow-hidden bg-white/5">
-          <table className="w-full text-sm">
-            <thead className="border-b border-white/10 bg-white/5">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">#</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">Student</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">Score / {maxScore}</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">%</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">Result</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {students.map((s, i) => {
-                const pct = getPercent(scores[s.id] ?? "");
-                const pass = isPassing(scores[s.id] ?? "");
-                return (
-                  <tr key={s.id} className="hover:bg-white/5">
-                    <td className="px-4 py-3 text-gray-500 text-xs">{i + 1}</td>
-                    <td className="px-4 py-3 font-medium text-white">{s.name}</td>
-                    <td className="px-4 py-3">
-                      <input
-                        type="number"
-                        min={0}
-                        max={maxScore}
-                        placeholder="—"
-                        value={scores[s.id] ?? ""}
-                        onChange={(e) => { setScores((p) => ({ ...p, [s.id]: e.target.value })); setSaved(false); }}
-                        className="w-24 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white font-mono outline-none focus:border-indigo-500"
-                      />
-                    </td>
-                    <td className="px-4 py-3 text-gray-400">{pct !== null ? `${pct}%` : "—"}</td>
-                    <td className="px-4 py-3">
-                      {pct !== null && (
-                        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium ${pass ? "bg-green-500/20 text-green-400 border-green-500/30" : "bg-red-500/20 text-red-400 border-red-500/30"}`}>
-                          {pass ? "Pass" : "Fail"}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+        <>
+          {/* Class Statistics */}
+          {validScores.length > 0 && (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+              {[
+                { label: t("average"),  value: classAvg !== null ? `${Math.round((classAvg / maxScore) * 100)}%` : "—", color: "border-indigo-200/80 bg-indigo-50/70 text-indigo-950 dark:border-indigo-500/30 dark:bg-indigo-500/10" },
+                { label: t("highest"), value: classMax !== null ? `${classMax}/${maxScore}` : "—", color: "border-emerald-200/80 bg-emerald-50/70 text-emerald-950 dark:border-emerald-500/30 dark:bg-emerald-500/10" },
+                { label: t("lowest"),  value: classMin !== null ? `${classMin}/${maxScore}` : "—", color: "border-rose-200/80 bg-rose-50/70 text-rose-950 dark:border-rose-500/30 dark:bg-rose-500/10" },
+                { label: t("pass"),    value: `${passCount}/${validScores.length}`, color: "border-cyan-200/80 bg-cyan-50/70 text-cyan-950 dark:border-cyan-500/30 dark:bg-cyan-500/10" },
+              ].map(({ label, value, color }) => (
+                <div key={label} className={`rounded-2xl border p-3.5 sm:p-4 text-center shadow-xs ${color}`}>
+                  <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
+                  <p className="text-[10px] sm:text-xs text-gray-600 dark:text-gray-400 mt-0.5">{label}</p>
+                </div>
+              ))}
+            </div>
+          )}
 
-      {students.length > 0 && ready && (
-        <div className="flex items-center gap-4">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50 transition-all"
-          >
-            {saving ? "Saving..." : "Save Grades"}
-          </button>
-          {saved && <span className="text-green-400 text-sm">✓ Grades saved successfully</span>}
-        </div>
+          {/* Score Distribution Chart */}
+          {validScores.length > 0 && (
+            <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs dark:border-white/10 dark:bg-white/5">
+              <h3 className="text-xs sm:text-sm font-semibold text-gray-600 dark:text-gray-400 mb-4">Score Distribution</h3>
+              <ResponsiveContainer width="100%" height={140}>
+                <BarChart data={distBuckets}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                  <XAxis dataKey="label" tick={{ fill: axisColor, fontSize: 11 }} />
+                  <YAxis tick={{ fill: axisColor, fontSize: 10 }} allowDecimals={false} />
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                    {distBuckets.map((b) => <Cell key={b.label} fill={b.color} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Grades Table */}
+          <div className="rounded-2xl border border-gray-200 bg-white overflow-x-auto shadow-sm dark:border-white/10 dark:bg-white/5">
+            <table className="w-full text-xs sm:text-sm min-w-[600px]">
+              <thead className="border-b border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-gray-900/60">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">#</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("student")}</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("score")} / {maxScore}</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("percentage")}</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("letterGrade")}</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("result")}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-white/5">
+                {students.map((s, i) => {
+                  const pct = getPercent(scores[s.id] ?? "");
+                  const pass = pct !== null && pct >= PASS_THRESHOLD * 100;
+                  const { letter, color } = letterGrade(Number(scores[s.id]) || 0, maxScore);
+                  const rank = sortedStudentIds.indexOf(s.id);
+                  const medal = rank === 0 ? "🥇" : rank === 1 ? "🥈" : rank === 2 ? "🥉" : null;
+                  const isFail = pct !== null && pct < 50;
+                  return (
+                    <tr key={s.id} className={`hover:bg-gray-50/80 dark:hover:bg-white/5 ${isFail && scores[s.id] !== "" ? "bg-rose-50/50 dark:bg-rose-500/5" : ""}`}>
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs">
+                        {medal ?? (i + 1)}
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-gray-900 dark:text-white">
+                        {s.name}
+                        {medal && <span className="ml-2 text-xs text-amber-500 dark:text-yellow-400 font-normal">Top {rank + 1}</span>}
+                      </td>
+                      <td className="px-4 py-3">
+                        <RoleGuard permission="record:grades">
+                          <input
+                            type="number"
+                            min={0}
+                            max={maxScore}
+                            placeholder="—"
+                            value={scores[s.id] ?? ""}
+                            onChange={(e) => { setScores((p) => ({ ...p, [s.id]: e.target.value })); setSaved(false); }}
+                            className="w-20 sm:w-24 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs sm:text-sm text-gray-900 font-mono outline-none focus:border-indigo-500 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                          />
+                        </RoleGuard>
+                      </td>
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400 font-mono text-xs sm:text-sm">{pct !== null ? `${pct}%` : "—"}</td>
+                      <td className={`px-4 py-3 font-bold ${scores[s.id] ? color : "text-gray-400 dark:text-gray-600"}`}>
+                        {scores[s.id] ? letter : "—"}
+                      </td>
+                      <td className="px-4 py-3">
+                        {pct !== null && (
+                          <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-[10px] font-semibold ${pass ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-green-500/20 dark:text-green-400 dark:border-green-500/30" : "bg-rose-50 text-rose-700 border-rose-200 dark:bg-red-500/20 dark:text-red-400 dark:border-red-500/30"}`}>
+                            {pass ? t("pass") : t("fail")}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <RoleGuard permission="record:grades">
+            <div className="flex items-center gap-4 pt-2">
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="rounded-xl bg-indigo-600 px-4 py-2 text-xs sm:text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50 transition-all shadow-md shadow-indigo-500/20"
+              >
+                {saving ? t("saving") : t("saveGrades")}
+              </button>
+              {saved && <span className="text-emerald-600 dark:text-green-400 text-xs sm:text-sm font-medium">✓ {t("gradesSaved")}</span>}
+            </div>
+          </RoleGuard>
+        </>
       )}
     </div>
   );

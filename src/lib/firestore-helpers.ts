@@ -39,6 +39,17 @@ export async function fetchCollection<T>(
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as T));
 }
 
+/** Fetch a single document by ID from a school subcollection. */
+export async function getDocument<T>(
+  schoolId: string,
+  colName: string,
+  docId: string
+): Promise<T | null> {
+  const snap = await getDoc(schoolDoc(schoolId, colName, docId));
+  if (!snap.exists()) return null;
+  return { id: snap.id, ...snap.data() } as T;
+}
+
 /** Add a document to a school subcollection (auto-generates ID). */
 export async function addDocument(
   schoolId: string,
@@ -115,7 +126,7 @@ export async function batchSetDocuments(
 
 // ─── Convenience query builders ──────────────────────────────────────────────
 
-export { where, orderBy, serverTimestamp, getDoc, getDocs, query };
+export { where, orderBy, serverTimestamp, query };
 
 // ─── IQD Formatter ───────────────────────────────────────────────────────────
 

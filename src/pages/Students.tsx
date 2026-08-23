@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAcademicYear } from "@/contexts/AcademicYearContext";
+import { useTranslation } from "@/lib/i18n";
 import {
   fetchCollection,
   addDocument,
@@ -17,6 +19,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Combobox } from "@/components/ui/combobox";
+import ExcelExport from "@/components/ExcelExport";
+import RoleGuard from "@/components/RoleGuard";
+import { differenceInYears, parseISO } from "date-fns";
 
 const emptyForm = () => ({
   name: "",
@@ -26,11 +31,44 @@ const emptyForm = () => ({
   dateOfBirth: "",
   guardianName: "",
   guardianPhone: "",
+  address: "",
+  bloodGroup: "",
+  nationalId: "",
+  notes: "",
 });
+
+function calcAge(dob: string): string {
+  if (!dob) return "—";
+  try {
+    const age = differenceInYears(new Date(), parseISO(dob));
+    return `${age}`;
+  } catch {
+    return "—";
+  }
+}
+
+function Avatar({ name, gender }: { name: string; gender: "male" | "female" }) {
+  const initials = name
+    .split(" ")
+    .map((n) => n[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+  const bg = gender === "male"
+    ? "from-blue-600 to-indigo-600"
+    : "from-pink-500 to-violet-600";
+  return (
+    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr ${bg} text-xs font-bold text-white shadow`}>
+      {initials}
+    </div>
+  );
+}
 
 export default function Students() {
   const { schoolId } = useAuth();
   const { activeYear } = useAcademicYear();
+  const { t } = useTranslation();
+  const navigate = useNavigate();
 
   const [students, setStudents] = useState<Student[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
@@ -41,10 +79,10 @@ export default function Students() {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [filterClass, setFilterClass] = useState("all");
+  const [filterGender, setFilterGender] = useState("all");
 
   const load = useCallback(async () => {
     if (!schoolId) return;
-    setLoading(true);
     try {
       const [studs, cls] = await Promise.all([
         fetchCollection<Student>(schoolId, "students", [
@@ -65,7 +103,10 @@ export default function Students() {
     }
   }, [schoolId, activeYear]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const id = setTimeout(() => load(), 0);
+    return () => clearTimeout(id);
+  }, [load]);
 
   const openAdd = () => { setEditing(null); setForm(emptyForm()); setModalOpen(true); };
   const openEdit = (s: Student) => {
@@ -78,6 +119,10 @@ export default function Students() {
       dateOfBirth: s.dateOfBirth,
       guardianName: s.guardianName,
       guardianPhone: s.guardianPhone,
+      address: s.address ?? "",
+      bloodGroup: s.bloodGroup ?? "",
+      nationalId: s.nationalId ?? "",
+      notes: s.notes ?? "",
     });
     setModalOpen(true);
   };
@@ -117,10 +162,17 @@ export default function Students() {
   };
 
   const filtered = students.filter((s) => {
-    const matchSearch = s.name.includes(search) || s.nameEn.toLowerCase().includes(search.toLowerCase());
+    const matchSearch =
+      s.name.includes(search) ||
+      s.nameEn.toLowerCase().includes(search.toLowerCase()) ||
+      (s.guardianName ?? "").includes(search);
     const matchClass = filterClass === "all" || s.classId === filterClass;
-    return matchSearch && matchClass;
+    const matchGender = filterGender === "all" || s.gender === filterGender;
+    return matchSearch && matchClass && matchGender;
   });
+
+  const maleCount = students.filter((s) => s.gender === "male").length;
+  const femaleCount = students.filter((s) => s.gender === "female").length;
 
   const classOptions = classes.map((c) => ({
     value: c.id,
@@ -128,87 +180,139 @@ export default function Students() {
     sublabel: c.nameEn,
   }));
 
+  const excelData = filtered.map((s) => ({
+    [t("name")]: s.name,
+    "Secondary Name": s.nameEn,
+    [t("class")]: s.className,
+    [t("gender")]: s.gender === "male" ? t("male") : t("female"),
+    [t("dateOfBirth")]: s.dateOfBirth,
+    [t("age")]: calcAge(s.dateOfBirth),
+    [t("guardian")]: s.guardianName,
+    [t("phone")]: s.guardianPhone,
+  }));
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-white">Students</h2>
-          <p className="text-sm text-gray-400">Enrolled Students — {activeYear} ({students.length} total)</p>
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{t("students")}</h2>
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+            {t("enrolledStudents")} — {activeYear} ({students.length} {t("totalStudents").toLowerCase()})
+          </p>
         </div>
-        <button onClick={openAdd} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/20 transition-all">
-          + Add Student
-        </button>
+        <RoleGuard permission="manage:students">
+          <button onClick={openAdd} className="rounded-lg bg-indigo-600 px-3.5 py-2 text-xs sm:text-sm font-medium text-white hover:bg-indigo-500 shadow-md shadow-indigo-500/20 transition-all self-start sm:self-auto">
+            + {t("addStudentBtn")}
+          </button>
+        </RoleGuard>
       </div>
 
-      <div className="flex gap-3">
+      {/* Stats Bar */}
+      <div className="grid grid-cols-3 gap-3 sm:gap-4">
+        <div className="rounded-2xl border border-indigo-200/80 bg-indigo-50/70 p-3.5 sm:p-4 text-center dark:border-indigo-500/30 dark:bg-indigo-500/10 shadow-xs">
+          <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{students.length}</p>
+          <p className="text-[10px] sm:text-xs text-gray-600 dark:text-gray-400 mt-0.5">{t("totalStudents")}</p>
+        </div>
+        <div className="rounded-2xl border border-blue-200/80 bg-blue-50/70 p-3.5 sm:p-4 text-center dark:border-blue-500/30 dark:bg-blue-500/10 shadow-xs">
+          <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{maleCount}</p>
+          <p className="text-[10px] sm:text-xs text-gray-600 dark:text-gray-400 mt-0.5">{t("male")}</p>
+        </div>
+        <div className="rounded-2xl border border-pink-200/80 bg-pink-50/70 p-3.5 sm:p-4 text-center dark:border-pink-500/30 dark:bg-pink-500/10 shadow-xs">
+          <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{femaleCount}</p>
+          <p className="text-[10px] sm:text-xs text-gray-600 dark:text-gray-400 mt-0.5">{t("female")}</p>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-2.5 sm:gap-3 items-center">
         <input
-          placeholder="Search students..."
+          placeholder={t("searchStudents")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="max-w-xs rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none placeholder:text-gray-600 focus:border-indigo-500"
+          className="flex-1 min-w-44 max-w-xs rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs sm:text-sm text-gray-900 outline-none placeholder:text-gray-400 focus:border-indigo-500 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-gray-500 shadow-2xs"
         />
         <select
           value={filterClass}
           onChange={(e) => setFilterClass(e.target.value)}
-          className="rounded-lg border border-white/10 bg-gray-800 px-3 py-2 text-sm text-white outline-none"
+          className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs sm:text-sm text-gray-900 outline-none dark:border-white/10 dark:bg-gray-800 dark:text-white shadow-2xs"
         >
-          <option value="all">All Classes</option>
+          <option value="all">{t("allClasses")}</option>
           {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
+        <select
+          value={filterGender}
+          onChange={(e) => setFilterGender(e.target.value)}
+          className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs sm:text-sm text-gray-900 outline-none dark:border-white/10 dark:bg-gray-800 dark:text-white shadow-2xs"
+        >
+          <option value="all">{t("allGenders")}</option>
+          <option value="male">{t("male")}</option>
+          <option value="female">{t("female")}</option>
+        </select>
+        <ExcelExport data={excelData} filename="students" label={t("exportExcel")} />
       </div>
 
       {/* Table */}
-      <div className="rounded-2xl border border-white/10 overflow-hidden bg-white/5 shadow-xl">
-        <table className="w-full text-sm text-left">
-          <thead className="border-b border-white/10 bg-gray-900/60 backdrop-blur">
+      <div className="rounded-2xl border border-gray-200 bg-white overflow-x-auto shadow-sm dark:border-white/10 dark:bg-white/5">
+        <table className="w-full text-xs sm:text-sm text-left min-w-[800px]">
+          <thead className="border-b border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-gray-900/60">
             <tr>
-              <th className="px-4 py-3.5 text-xs font-bold uppercase tracking-wider text-gray-300">Name</th>
-              <th className="px-4 py-3.5 text-xs font-bold uppercase tracking-wider text-gray-300">Class</th>
-              <th className="px-4 py-3.5 text-xs font-bold uppercase tracking-wider text-gray-300">Gender</th>
-              <th className="px-4 py-3.5 text-xs font-bold uppercase tracking-wider text-gray-300">Guardian</th>
-              <th className="px-4 py-3.5 text-xs font-bold uppercase tracking-wider text-gray-300">Phone</th>
-              <th className="px-4 py-3.5 text-right text-xs font-bold uppercase tracking-wider text-gray-300">Actions</th>
+              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("name")}</th>
+              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("class")}</th>
+              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("gender")}</th>
+              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("age")}</th>
+              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("guardian")}</th>
+              <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("phone")}</th>
+              <th className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">{t("actions")}</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-white/5">
+          <tbody className="divide-y divide-gray-100 dark:divide-white/5">
             {loading ? (
-              <tr><td colSpan={6} className="py-16 text-center text-gray-500">Loading students...</td></tr>
+              <tr><td colSpan={7} className="py-16 text-center text-gray-400">{t("loading")}</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={6} className="py-16 text-center text-gray-600">No students found. Click "+ Add Student".</td></tr>
+              <tr><td colSpan={7} className="py-16 text-center text-gray-500 dark:text-gray-400">{t("noStudentsFound")}</td></tr>
             ) : filtered.map((s) => (
-              <tr key={s.id} className="hover:bg-white/5 transition-colors">
-                <td className="px-4 py-3.5">
-                  <p className="font-medium text-white">{s.name}</p>
-                  {s.nameEn && <p className="text-xs text-gray-500">{s.nameEn}</p>}
+              <tr key={s.id} className="hover:bg-gray-50/80 dark:hover:bg-white/5 transition-colors">
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <Avatar name={s.name} gender={s.gender} />
+                    <div>
+                      <p className="font-medium text-gray-900 dark:text-white">{s.name}</p>
+                      {s.nameEn && <p className="text-xs text-gray-500 dark:text-gray-400">{s.nameEn}</p>}
+                    </div>
+                  </div>
                 </td>
-                <td className="px-4 py-3.5 text-gray-300">{s.className}</td>
-                <td className="px-4 py-3.5">
-                  <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-semibold border ${s.gender === "male" ? "bg-blue-500/20 text-blue-400 border-blue-500/30" : "bg-pink-500/20 text-pink-400 border-pink-500/30"}`}>
-                    {s.gender === "male" ? "Male" : "Female"}
+                <td className="px-4 py-3 text-gray-700 dark:text-gray-300 text-xs">{s.className}</td>
+                <td className="px-4 py-3">
+                  <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-semibold border ${s.gender === "male" ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-400 dark:border-blue-500/30" : "bg-pink-50 text-pink-700 border-pink-200 dark:bg-pink-500/20 dark:text-pink-400 dark:border-pink-500/30"}`}>
+                    {s.gender === "male" ? t("male") : t("female")}
                   </span>
                 </td>
-                <td className="px-4 py-3.5 text-gray-300">{s.guardianName || "—"}</td>
-                <td className="px-4 py-3.5 text-gray-400 font-mono text-xs">{s.guardianPhone || "—"}</td>
-                <td className="px-4 py-3.5 text-right">
-                  <div className="flex items-center justify-end gap-2">
+                <td className="px-4 py-3 text-gray-600 dark:text-gray-400 text-xs">{calcAge(s.dateOfBirth)}</td>
+                <td className="px-4 py-3 text-gray-700 dark:text-gray-300 text-xs">{s.guardianName || "—"}</td>
+                <td className="px-4 py-3 text-gray-600 dark:text-gray-400 font-mono text-xs">{s.guardianPhone || "—"}</td>
+                <td className="px-4 py-3 text-right">
+                  <div className="flex items-center justify-end gap-1.5 sm:gap-2">
                     <button
-                      onClick={() => openEdit(s)}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1 text-xs font-medium text-indigo-400 hover:bg-indigo-500/20 hover:text-indigo-300 transition-all active:scale-95"
+                      onClick={() => navigate(`/dashboard/students/${s.id}`)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-xs font-medium text-cyan-700 hover:bg-cyan-100 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-400 dark:hover:bg-cyan-500/20 transition-all shadow-2xs"
                     >
-                      <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-                        <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                      </svg>
-                      Edit
+                      👁 {t("view")}
                     </button>
-                    <button
-                      onClick={() => handleDelete(s)}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-xs font-medium text-rose-400 hover:bg-rose-500/20 hover:text-rose-300 transition-all active:scale-95"
-                    >
-                      <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
-                      </svg>
-                      Delete
-                    </button>
+                    <RoleGuard permission="manage:students">
+                      <button
+                        onClick={() => openEdit(s)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-400 dark:hover:bg-indigo-500/20 transition-all active:scale-95 shadow-2xs"
+                      >
+                        ✏️ {t("edit")}
+                      </button>
+                      <button
+                        onClick={() => handleDelete(s)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-400 dark:hover:bg-rose-500/20 transition-all active:scale-95 shadow-2xs"
+                      >
+                        🗑 {t("delete")}
+                      </button>
+                    </RoleGuard>
                   </div>
                 </td>
               </tr>
@@ -217,74 +321,98 @@ export default function Students() {
         </table>
       </div>
 
-      {/* Shadcn Dialog */}
+      {/* Add/Edit Dialog */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{editing ? "Edit Student" : "Add Student"}</DialogTitle>
+            <DialogTitle>{editing ? t("editStudent") : t("addStudentBtn")}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 pt-2">
+          <div className="space-y-4 pt-2 max-h-[70vh] overflow-y-auto pr-1">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-gray-300 mb-1">Full Name *</label>
-                <input placeholder="Mohammed Ali Hassan" value={form.name}
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{t("fullName")} *</label>
+                <input placeholder="محمد علي حسن" value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500" />
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:border-indigo-500 dark:border-white/10 dark:bg-white/5 dark:text-white" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-300 mb-1">Secondary / Code Name</label>
-                <input placeholder="M. Hassan" value={form.nameEn}
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{t("secondaryName")}</label>
+                <input placeholder="M. Ali" value={form.nameEn}
                   onChange={(e) => setForm({ ...form, nameEn: e.target.value })}
-                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500" />
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:border-indigo-500 dark:border-white/10 dark:bg-white/5 dark:text-white" />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-gray-300 mb-1">Class *</label>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{t("class")} *</label>
                 <Combobox
                   value={form.classId}
                   onChange={(val) => setForm({ ...form, classId: val })}
-                  placeholder="Search class..."
+                  placeholder={t("selectClass")}
                   options={classOptions}
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-300 mb-1">Gender</label>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{t("gender")}</label>
                 <select value={form.gender} onChange={(e) => setForm({ ...form, gender: e.target.value as "male" | "female" })}
-                  className="w-full rounded-lg border border-white/10 bg-gray-800 px-3 py-2 text-sm text-white outline-none">
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none dark:border-white/10 dark:bg-gray-800 dark:text-white">
+                  <option value="male">{t("male")}</option>
+                  <option value="female">{t("female")}</option>
                 </select>
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-gray-300 mb-1">Date of Birth</label>
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{t("dateOfBirth")}</label>
               <input type="date" value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })}
-                className="w-full rounded-lg border border-white/10 bg-gray-800 px-3 py-2 text-sm text-white outline-none" />
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none dark:border-white/10 dark:bg-gray-800 dark:text-white" />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-gray-300 mb-1">Guardian Name</label>
-                <input placeholder="Ali Hassan Mohammed" value={form.guardianName}
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{t("guardianName")}</label>
+                <input placeholder="علي حسن محمد" value={form.guardianName}
                   onChange={(e) => setForm({ ...form, guardianName: e.target.value })}
-                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500" />
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:border-indigo-500 dark:border-white/10 dark:bg-white/5 dark:text-white" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-300 mb-1">Guardian Phone</label>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{t("guardianPhone")}</label>
                 <input placeholder="07xx-xxx-xxxx" value={form.guardianPhone}
                   onChange={(e) => setForm({ ...form, guardianPhone: e.target.value })}
-                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500" />
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:border-indigo-500 dark:border-white/10 dark:bg-white/5 dark:text-white" />
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 pt-4 border-t border-white/10">
-              <button onClick={() => setModalOpen(false)} className="rounded-lg px-4 py-2 text-sm text-gray-400 hover:text-white">Cancel</button>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Blood Group ({t("optional")})</label>
+                <select value={form.bloodGroup} onChange={(e) => setForm({ ...form, bloodGroup: e.target.value })}
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none dark:border-white/10 dark:bg-gray-800 dark:text-white">
+                  <option value="">—</option>
+                  {["A+","A−","B+","B−","AB+","AB−","O+","O−"].map((bg) => <option key={bg} value={bg}>{bg}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">National ID ({t("optional")})</label>
+                <input placeholder="National ID No." value={form.nationalId}
+                  onChange={(e) => setForm({ ...form, nationalId: e.target.value })}
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:border-indigo-500 dark:border-white/10 dark:bg-white/5 dark:text-white" />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{t("notes")} ({t("optional")})</label>
+              <textarea rows={2} value={form.notes}
+                onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:border-indigo-500 dark:border-white/10 dark:bg-white/5 dark:text-white" />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-white/10">
+              <button onClick={() => setModalOpen(false)} className="rounded-lg px-4 py-2 text-sm text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">{t("cancel")}</button>
               <button onClick={handleSave} disabled={saving || !form.name || !form.classId}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50 transition-all">
-                {saving ? "Saving..." : "Save Student"}
+                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50 transition-all shadow-xs">
+                {saving ? t("saving") : t("saveStudent")}
               </button>
             </div>
           </div>
