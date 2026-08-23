@@ -6,6 +6,8 @@ import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Sun, Moon, Loader2 } from "lucide-react";
+
 import {
   Card,
   CardContent,
@@ -48,7 +50,10 @@ export default function Login() {
           className="rounded-xl border border-gray-200 bg-white p-2 text-gray-700 hover:bg-gray-100 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10 transition-colors shadow-2xs"
           title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
         >
-          {theme === "dark" ? "☀️" : "🌙"}
+          {theme === "dark"
+            ? <Sun  className="h-4 w-4 text-amber-400" strokeWidth={2} />
+            : <Moon className="h-4 w-4 text-indigo-500" strokeWidth={2} />
+          }
         </button>
         <button
           onClick={() => setLang(lang === "ar" ? "en" : "ar")}
@@ -142,10 +147,7 @@ export default function Login() {
               >
                 {isLoading ? (
                   <span className="flex items-center gap-2">
-                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
+                    <Loader2 className="h-4 w-4 animate-spin" />
                     Signing in…
                   </span>
                 ) : (

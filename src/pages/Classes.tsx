@@ -187,7 +187,7 @@ export default function Classes() {
               onClick={openAdd}
               className="rounded-lg bg-indigo-600 px-3.5 py-2 text-xs sm:text-sm font-medium text-white hover:bg-indigo-500 shadow-md shadow-indigo-500/20 transition-all"
             >
-              + {t("addClass")}
+              {t("addClass")}
             </button>
           </RoleGuard>
         </div>

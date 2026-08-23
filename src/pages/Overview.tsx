@@ -17,36 +17,8 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import { Skeleton, SkeletonChart } from "@/components/ui/Skeleton";
+import { Users, GraduationCap, BookOpen, DollarSign } from "lucide-react";
 
-// ── Icon helpers ──────────────────────────────────────────────────────────────
-function IconStudents() {
-  return (
-    <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
-      <path d="M10 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM6 8a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM1.49 15.326a.78.78 0 0 1-.358-.442 3 3 0 0 1 4.308-3.516 6.484 6.484 0 0 0-1.905 3.959c-.023.222-.014.442.025.654a4.97 4.97 0 0 1-2.07-.655ZM16.44 15.98a4.97 4.97 0 0 0 2.07-.654.78.78 0 0 0 .357-.442 3 3 0 0 0-4.308-3.517 6.484 6.484 0 0 1 1.907 3.96 2.32 2.32 0 0 1-.026.654ZM18 8a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM5.304 16.19a.844.844 0 0 1-.277-.71 5 5 0 0 1 9.947 0 .843.843 0 0 1-.277.71A6.975 6.975 0 0 1 10 18a6.974 6.974 0 0 1-4.696-1.81Z" />
-    </svg>
-  );
-}
-function IconTeachers() {
-  return (
-    <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
-      <path d="M7 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM14.5 9a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM1.615 16.428a1.224 1.224 0 0 1-.569-1.175 6.002 6.002 0 0 1 11.908 0c.058.467-.26.897-.731 1.026a24.49 24.49 0 0 1-10.608.149ZM13.882 15.65a4.5 4.5 0 0 0-7.382-3.15 7.472 7.472 0 0 1 6.368 3.023c.373-.038.745-.084 1.014-.127Z" />
-    </svg>
-  );
-}
-function IconClasses() {
-  return (
-    <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
-      <path d="M2 4.75C2 3.784 2.784 3 3.75 3h12.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0 1 16.25 17H3.75A1.75 1.75 0 0 1 2 15.25V4.75ZM3.75 4.5a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V4.75a.25.25 0 0 0-.25-.25H3.75Z" />
-    </svg>
-  );
-}
-function IconFees() {
-  return (
-    <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
-      <path fillRule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-8-6a.75.75 0 0 1 .75.75v.316a3.78 3.78 0 0 1 1.653.713c.426.33.744.74.925 1.2a.75.75 0 0 1-1.395.55 1.35 1.35 0 0 0-.447-.563 2.187 2.187 0 0 0-.736-.363V9.3c.698.093 1.383.32 1.959.696.787.514 1.29 1.27 1.29 2.13 0 .86-.504 1.616-1.29 2.13-.576.377-1.261.603-1.96.696V15a.75.75 0 0 1-1.5 0v-.28a3.782 3.782 0 0 1-1.653-.713c-.426-.33-.744-.74-.924-1.2a.75.75 0 1 1 1.395-.55 1.35 1.35 0 0 0 .447.563c.284.22.645.37 1.035.432v-2.8c-.698-.093-1.383-.32-1.96-.696C6.513 10.616 6 9.86 6 9c0-.86.504-1.616 1.29-2.13A3.78 3.78 0 0 1 9 6.166V4.75A.75.75 0 0 1 10 4Z" clipRule="evenodd" />
-    </svg>
-  );
-}
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
 interface StatCardProps {
@@ -273,10 +245,10 @@ export default function Overview() {
 
       {/* ── Stat cards ────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <StatCard loading={loading} label={String(t("totalStudents"))} value={studentCount?.toLocaleString() ?? "0"} icon={<IconStudents />} accent="indigo" />
-        <StatCard loading={loading} label={String(t("totalTeachers"))} value={teacherCount?.toLocaleString() ?? "0"} icon={<IconTeachers />} accent="violet" />
-        <StatCard loading={loading} label={String(t("totalClasses"))}  value={classCount?.toLocaleString()   ?? "0"} icon={<IconClasses />}  accent="sky" />
-        <StatCard loading={loading} label={String(t("feesCollected"))} value={feesCollected !== null ? formatIQD(feesCollected) : "0"} icon={<IconFees />} accent="emerald" sub={totalBilled ? `of ${formatIQD(totalBilled)}` : undefined} />
+        <StatCard loading={loading} label={String(t("totalStudents"))} value={studentCount?.toLocaleString() ?? "0"} icon={<Users        className="h-5 w-5" strokeWidth={1.75} />} accent="indigo" />
+        <StatCard loading={loading} label={String(t("totalTeachers"))} value={teacherCount?.toLocaleString() ?? "0"} icon={<GraduationCap className="h-5 w-5" strokeWidth={1.75} />} accent="violet" />
+        <StatCard loading={loading} label={String(t("totalClasses"))}  value={classCount?.toLocaleString()   ?? "0"} icon={<BookOpen      className="h-5 w-5" strokeWidth={1.75} />} accent="sky" />
+        <StatCard loading={loading} label={String(t("feesCollected"))} value={feesCollected !== null ? formatIQD(feesCollected) : "0"} icon={<DollarSign   className="h-5 w-5" strokeWidth={1.75} />} accent="emerald" sub={totalBilled ? `of ${formatIQD(totalBilled)}` : undefined} />
       </div>
 
       {/* ── KPI strip ─────────────────────────────────────────────────────── */}
