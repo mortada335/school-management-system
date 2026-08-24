@@ -1,10 +1,11 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useAcademicYear } from "@/contexts/AcademicYearContext";
 import { useTranslation } from "@/lib/i18n";
 import {
   fetchCollection,
+  subscribeCollection,
   batchSetDocuments,
   where,
   orderBy,
@@ -64,43 +65,57 @@ export default function Grades() {
     ]).then(([cls, sub]) => { setClasses(cls); setSubjects(sub); });
   }, [schoolId, activeYear]);
 
-  const loadGrades = useCallback(async () => {
+  useEffect(() => {
+    let active = true;
     if (!schoolId || !selectedClass || !selectedSubject) return;
     setLoadingStudents(true);
     setSaved(false);
 
-    try {
-      const [studs, existingGrades] = await Promise.all([
-        fetchCollection<Student>(schoolId, "students", [
-          where("classId", "==", selectedClass),
-        ]),
-        fetchCollection<Grade>(schoolId, "grades", [
-          where("classId", "==", selectedClass),
-          where("subjectId", "==", selectedSubject),
-          where("term", "==", selectedTerm),
-          where("academicYear", "==", activeYear),
-        ]),
-      ]);
-
-      // Sort client-side — avoids requiring a composite Firestore index
+    // Load students once
+    fetchCollection<Student>(schoolId, "students", [
+      where("classId", "==", selectedClass),
+    ]).then((studs) => {
+      if (!active) return;
+      // Sort client-side
       studs.sort((a, b) => a.name.localeCompare(b.name));
-
       setStudents(studs);
-      const existing: Record<string, string> = {};
-      existingGrades.forEach((g) => { existing[g.studentId] = String(g.score); });
-      const defaults: Record<string, string> = {};
-      studs.forEach((s) => { defaults[s.id] = existing[s.id] ?? ""; });
-      setScores(defaults);
-    } catch (err) {
-      console.error("Error loading grades:", err);
-    } finally {
-      setLoadingStudents(false);
-    }
-  }, [schoolId, selectedClass, selectedSubject, selectedTerm, activeYear]);
+      
+      // Initialize empty scores for new students
+      setScores(prev => {
+        const nm = { ...prev };
+        studs.forEach(s => { if (nm[s.id] === undefined) nm[s.id] = ""; });
+        return nm;
+      });
+    }).catch(err => {
+      console.error("Error loading students:", err);
+    });
 
-  useEffect(() => {
-    loadGrades();
-  }, [loadGrades]);
+    // Real-time listener for grades
+    const unsubscribe = subscribeCollection<Grade>(
+      schoolId,
+      "grades",
+      [
+        where("classId", "==", selectedClass),
+        where("subjectId", "==", selectedSubject),
+        where("term", "==", selectedTerm),
+        where("academicYear", "==", activeYear),
+      ],
+      (existingGrades) => {
+        if (!active) return;
+        setScores(prev => {
+          const nm = { ...prev };
+          existingGrades.forEach(g => { nm[g.studentId] = String(g.score); });
+          return nm;
+        });
+        setLoadingStudents(false);
+      }
+    );
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [schoolId, selectedClass, selectedSubject, selectedTerm, activeYear]);
 
   const handleSave = async () => {
     if (!schoolId || !selectedClass || !selectedSubject || students.length === 0) return;

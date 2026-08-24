@@ -283,6 +283,18 @@ const translations: Record<string, Record<Lang, string>> = {
   logout:            { ar: "تسجيل الخروج",      en: "Sign Out" },
   viewAll:           { ar: "عرض الكل",          en: "View All" },
   assign:            { ar: "تعيين",             en: "Assign" },
+  filters:           { ar: "الفلاتر",           en: "Filters" },
+  search_by:         { ar: "بحث حسب",           en: "Search by" },
+  Search:            { ar: "بحث",               en: "Search" },
+  "Toggle filters menu": { ar: "تبديل قائمة الفلاتر", en: "Toggle filters menu" },
+  "Clear Filters":   { ar: "مسح الفلاتر",       en: "Clear Filters" },
+  "filter[name]":    { ar: "الاسم",             en: "Name" },
+  "Filter By":       { ar: "تصفية حسب",         en: "Filter By" },
+  "Close filters menu": { ar: "إغلاق قائمة الفلاتر", en: "Close filters menu" },
+  "No filters available": { ar: "لا توجد فلاتر متاحة", en: "No filters available" },
+  Select:            { ar: "اختر",              en: "Select" },
+  Reset:             { ar: "إعادة ضبط",         en: "Reset" },
+  Apply:             { ar: "تطبيق",             en: "Apply" },
 
   // ── Overview extras ──
   academicPerformance:    { ar: "الأداء الأكاديمي",         en: "Academic Performance" },

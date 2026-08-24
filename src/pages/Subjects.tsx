@@ -2,13 +2,16 @@ import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTranslation } from "@/lib/i18n";
 import {
-  fetchCollection,
+  fetchCollectionPaginated,
   addDocument,
   updateDocument,
   deleteDocument,
   orderBy,
+  type QueryConstraint,
 } from "@/lib/firestore-helpers";
 import type { Subject } from "@/types";
+import { usePagination } from "@/hooks/usePagination";
+import FiltersSection from "@/components/filters-ui/FiltersSection";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +29,7 @@ export default function Subjects() {
   const { t } = useTranslation();
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Subject | null>(null);
   const [name, setName] = useState("");
@@ -33,23 +37,48 @@ export default function Subjects() {
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Subject | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [search, setSearch] = useState("");
+  const [isMenuOpen, setIsMenuOpen] = useState(false); // needed for FiltersSection, though we have no extra filters
 
-  const load = useCallback(async () => {
+  const { lastDoc, hasMore, resetPagination, nextPage } = usePagination();
+
+  const loadSubjects = useCallback(async (isLoadMore = false) => {
     if (!schoolId) return;
-    setLoading(true);
+    if (isLoadMore) setLoadingMore(true);
+    else setLoading(true);
+
     try {
-      const data = await fetchCollection<Subject>(schoolId, "subjects", [orderBy("name")]);
-      setSubjects(data);
+      const constraints: QueryConstraint[] = [orderBy("name")];
+
+      const { data, lastDoc: newLastDoc, hasMore: newHasMore } = await fetchCollectionPaginated<Subject>(
+        schoolId,
+        "subjects",
+        constraints,
+        20,
+        isLoadMore ? lastDoc : null
+      );
+      
+      setSubjects(prev => isLoadMore ? [...prev, ...data] : data);
+      nextPage(newLastDoc, newHasMore);
     } catch (err) {
       console.error("Error loading subjects:", err);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
-  }, [schoolId]);
+  }, [schoolId, lastDoc, nextPage]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    resetPagination();
+  }, [schoolId, resetPagination]);
+
+  useEffect(() => {
+    if (loading) {
+      loadSubjects(false);
+    }
+  }, [loading, loadSubjects]);
+
+  const triggerReload = () => setLoading(true);
 
   const openAdd = () => { setEditing(null); setName(""); setNameEn(""); setModalOpen(true); };
   const openEdit = (s: Subject) => { setEditing(s); setName(s.name); setNameEn(s.nameEn || ""); setModalOpen(true); };
@@ -64,7 +93,7 @@ export default function Subjects() {
         await addDocument(schoolId, "subjects", { name, nameEn });
       }
       setModalOpen(false);
-      await load();
+      triggerReload();
     } catch (err) {
       console.error("Error saving subject:", err);
     } finally {
@@ -82,13 +111,22 @@ export default function Subjects() {
     try {
       await deleteDocument(schoolId, "subjects", deleteTarget.id);
       setDeleteTarget(null);
-      await load();
+      triggerReload();
     } catch (err) {
       console.error("Error deleting subject:", err);
     } finally {
       setDeleting(false);
     }
   };
+
+  const filtered = subjects.filter((s) => {
+    if (!search) return true;
+    return (
+      s.name.toLowerCase().includes(search.toLowerCase()) ||
+      (s.nameEn && s.nameEn.toLowerCase().includes(search.toLowerCase())) ||
+      (s.category && s.category.toLowerCase().includes(search.toLowerCase()))
+    );
+  });
 
   return (
     <div className="space-y-6">
@@ -104,10 +142,23 @@ export default function Subjects() {
         </RoleGuard>
       </div>
 
+      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+        <FiltersSection
+          searchQuery={search}
+          setSearchQuery={setSearch}
+          isMenuOpen={isMenuOpen}
+          setIsMenuOpen={setIsMenuOpen}
+          placeholderKey="searchSubjects"
+          hasActiveFilters={!!search}
+          onClearFilters={() => setSearch("")}
+        />
+      </div>
+
       <DataWrapper
         loading={loading}
-        empty={subjects.length === 0}
-        emptyMessage={t("noSubjectsFound")}
+        empty={filtered.length === 0}
+        emptyMessage={search ? String(t("noSubjectsFound")) : String(t("noSubjectsFound"))}
+        onClearFilters={search ? () => setSearch("") : undefined}
         skeleton={
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {Array.from({ length: 6 }).map((_, i) => (
@@ -117,7 +168,7 @@ export default function Subjects() {
         }
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {subjects.map((s) => (
+          {filtered.map((s) => (
             <div key={s.id} className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 flex items-center justify-between group hover:border-indigo-500/40 hover:shadow-md transition-all dark:border-white/10 dark:bg-white/5 shadow-xs">
               <div>
                 <p className="font-bold text-gray-900 dark:text-white text-sm sm:text-base">{s.name}</p>
@@ -145,6 +196,23 @@ export default function Subjects() {
           ))}
         </div>
       </DataWrapper>
+
+      {/* Pagination Load More */}
+      {!loading && hasMore && subjects.filter(s => {
+        if (!search) return true;
+        return s.name.toLowerCase().includes(search.toLowerCase()) || 
+               (s.nameEn && s.nameEn.toLowerCase().includes(search.toLowerCase()));
+      }).length > 0 && (
+        <div className="flex justify-center mt-6">
+          <button
+            onClick={() => loadSubjects(true)}
+            disabled={loadingMore}
+            className="rounded-lg border border-gray-200 bg-white px-5 py-2.5 text-sm font-medium text-gray-900 hover:bg-gray-50 focus:outline-none dark:border-white/10 dark:bg-gray-800 dark:text-white dark:hover:bg-gray-700 disabled:opacity-50 transition-colors shadow-2xs"
+          >
+            {loadingMore ? t("loading") + "..." : t("loadMore") || "Load More"}
+          </button>
+        </div>
+      )}
 
       {/* Dialog */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>

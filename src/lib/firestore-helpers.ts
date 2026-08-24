@@ -13,8 +13,16 @@ import {
   serverTimestamp,
   getCountFromServer,
   writeBatch,
+  startAfter,
+  limit,
+  onSnapshot,
   type QueryConstraint,
+  type DocumentData,
+  type QueryDocumentSnapshot,
 } from "firebase/firestore";
+
+export type { QueryConstraint };
+
 import { db } from "@/lib/firebase";
 
 // ─── Scoped collection reference ────────────────────────────────────────────
@@ -37,6 +45,68 @@ export async function fetchCollection<T>(
   const q = query(schoolCol(schoolId, colName), ...constraints);
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as T));
+}
+
+/** Fetch documents with cursor-based pagination. */
+export async function fetchCollectionPaginated<T>(
+  schoolId: string,
+  colName: string,
+  constraints: QueryConstraint[] = [],
+  pageSize: number = 20,
+  lastDoc: QueryDocumentSnapshot<DocumentData, DocumentData> | null = null
+): Promise<{ data: T[]; lastDoc: QueryDocumentSnapshot<DocumentData, DocumentData> | null; hasMore: boolean }> {
+  const queryConstraints = [...constraints, limit(pageSize)];
+  if (lastDoc) {
+    queryConstraints.push(startAfter(lastDoc));
+  }
+  const q = query(schoolCol(schoolId, colName), ...queryConstraints);
+  const snap = await getDocs(q);
+  
+  const data = snap.docs.map((d) => ({ id: d.id, ...d.data() } as T));
+  const newLastDoc = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
+  const hasMore = snap.docs.length === pageSize;
+
+  return { data, lastDoc: newLastDoc, hasMore };
+}
+
+/** Subscribe to a collection in real-time. */
+export function subscribeCollection<T>(
+  schoolId: string,
+  colName: string,
+  constraints: QueryConstraint[] = [],
+  onData: (data: T[]) => void,
+  onError?: (error: Error) => void
+): () => void {
+  const q = query(schoolCol(schoolId, colName), ...constraints);
+  return onSnapshot(
+    q,
+    (snap) => onData(snap.docs.map((d) => ({ id: d.id, ...d.data() } as T))),
+    (error) => {
+      console.error(`Error subscribing to ${colName}:`, error);
+      if (onError) onError(error);
+    }
+  );
+}
+
+/** Subscribe to a single document in real-time. */
+export function subscribeDocument<T>(
+  schoolId: string,
+  colName: string,
+  docId: string,
+  onData: (data: T | null) => void,
+  onError?: (error: Error) => void
+): () => void {
+  return onSnapshot(
+    schoolDoc(schoolId, colName, docId),
+    (snap) => {
+      if (!snap.exists()) onData(null);
+      else onData({ id: snap.id, ...snap.data() } as T);
+    },
+    (error) => {
+      console.error(`Error subscribing to ${colName}/${docId}:`, error);
+      if (onError) onError(error);
+    }
+  );
 }
 
 /** Fetch a single document by ID from a school subcollection. */
@@ -126,7 +196,7 @@ export async function batchSetDocuments(
 
 // ─── Convenience query builders ──────────────────────────────────────────────
 
-export { where, orderBy, serverTimestamp, query };
+export { where, orderBy, limit, startAfter, serverTimestamp, query };
 
 // ─── IQD Formatter ───────────────────────────────────────────────────────────
 

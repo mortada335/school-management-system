@@ -5,14 +5,19 @@ import { useAcademicYear } from "@/contexts/AcademicYearContext";
 import { useTranslation } from "@/lib/i18n";
 import {
   fetchCollection,
+  fetchCollectionPaginated,
   addDocument,
   updateDocument,
   deleteDocument,
   formatIQD,
   where,
   orderBy,
+  type QueryConstraint,
 } from "@/lib/firestore-helpers";
 import type { Fee, Student, FeeType, FeeStatus } from "@/types";
+import { usePagination } from "@/hooks/usePagination";
+import FiltersSection from "@/components/filters-ui/FiltersSection";
+import FiltersMenu from "@/components/filters-ui/FiltersMenu";
 import {
   Dialog,
   DialogContent,
@@ -70,6 +75,7 @@ export default function Fees() {
   const [fees, setFees] = useState<Fee[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Fee | null>(null);
   const [form, setForm] = useState(emptyForm());
@@ -79,32 +85,70 @@ export default function Fees() {
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [showOverdueOnly, setShowOverdueOnly] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  const load = useCallback(async () => {
+  const { lastDoc, hasMore, resetPagination, nextPage } = usePagination();
+
+  const loadStudents = useCallback(async () => {
     if (!schoolId) return;
-    setLoading(true);
     try {
-      const [feeList, studList] = await Promise.all([
-        fetchCollection<Fee>(schoolId, "fees", [
-          where("academicYear", "==", activeYear),
-          orderBy("createdAt", "desc"),
-        ]),
-        fetchCollection<Student>(schoolId, "students", [
-          where("enrollmentYear", "==", activeYear),
-          orderBy("name"),
-        ]),
+      const studList = await fetchCollection<Student>(schoolId, "students", [
+        where("enrollmentYear", "==", activeYear),
+        orderBy("name"),
       ]);
-      setFees(feeList);
       setStudents(studList);
+    } catch (err) {
+      console.error(err);
+    }
+  }, [schoolId, activeYear]);
+
+  useEffect(() => {
+    loadStudents();
+  }, [loadStudents]);
+
+  const loadFees = useCallback(async (isLoadMore = false) => {
+    if (!schoolId) return;
+    if (isLoadMore) setLoadingMore(true);
+    else setLoading(true);
+
+    try {
+      const constraints: QueryConstraint[] = [
+        where("academicYear", "==", activeYear),
+      ];
+      if (filterStatus !== "all") {
+        constraints.push(where("status", "==", filterStatus));
+      }
+      constraints.push(orderBy("createdAt", "desc"));
+
+      const { data, lastDoc: newLastDoc, hasMore: newHasMore } = await fetchCollectionPaginated<Fee>(
+        schoolId,
+        "fees",
+        constraints,
+        20,
+        isLoadMore ? lastDoc : null
+      );
+      
+      setFees(prev => isLoadMore ? [...prev, ...data] : data);
+      nextPage(newLastDoc, newHasMore);
     } catch (err) {
       console.error("Error loading fees:", err);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
-  }, [schoolId, activeYear]);
+  }, [schoolId, activeYear, filterStatus, lastDoc, nextPage]);
+
   useEffect(() => {
-    load();
-  }, [load]);
+    resetPagination();
+  }, [filterStatus, activeYear, schoolId, resetPagination]);
+
+  useEffect(() => {
+    if (loading) {
+      loadFees(false);
+    }
+  }, [loading, loadFees]);
+
+  const triggerReload = () => setLoading(true);
 
   const openAdd = () => { setEditing(null); setForm(emptyForm()); setModalOpen(true); };
   const openEdit = (f: Fee) => {
@@ -144,7 +188,7 @@ export default function Fees() {
         await addDocument(schoolId, "fees", data);
       }
       setModalOpen(false);
-      await load();
+      triggerReload();
     } catch (err) {
       console.error("Error saving fee:", err);
     } finally {
@@ -159,7 +203,7 @@ export default function Fees() {
       status: nextStatus,
       paidAt: nextStatus === "paid" ? new Date().toISOString() : null,
     });
-    await load();
+    triggerReload();
   };
 
   const handleDelete = (f: Fee) => {
@@ -172,7 +216,7 @@ export default function Fees() {
     try {
       await deleteDocument(schoolId, "fees", deleteTarget.id);
       setDeleteTarget(null);
-      await load();
+      triggerReload();
     } catch (err) {
       console.error("Error deleting fee:", err);
     } finally {
@@ -183,10 +227,10 @@ export default function Fees() {
   const today = new Date().toISOString().split("T")[0];
 
   const filtered = fees.filter((f) => {
-    const matchSearch = f.studentName.includes(search);
-    const matchStatus = filterStatus === "all" || f.status === filterStatus;
-    const matchOverdue = !showOverdueOnly || (f.status !== "paid" && f.dueDate < today);
-    return matchSearch && matchStatus && matchOverdue;
+    if (!search && !showOverdueOnly) return true;
+    const matchSearch = !search || f.studentName.toLowerCase().includes(search.toLowerCase());
+    const matchOverdue = !showOverdueOnly || (f.status !== "paid" && f.dueDate && f.dueDate < today);
+    return matchSearch && matchOverdue;
   });
 
   const totalAmount = filtered.reduce((acc, f) => acc + (f.amount || 0), 0);
@@ -340,23 +384,20 @@ export default function Fees() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-2.5 sm:gap-3">
-        <input
-          placeholder={t("searchStudents")}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 max-w-full sm:max-w-xs rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs sm:text-sm text-gray-900 outline-none placeholder:text-gray-400 focus:border-indigo-500 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-gray-500 shadow-2xs"
+      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+        <FiltersSection
+          searchQuery={search}
+          setSearchQuery={setSearch}
+          isMenuOpen={isMenuOpen}
+          setIsMenuOpen={setIsMenuOpen}
+          placeholderKey="searchStudents"
+          hasActiveFilters={filterStatus !== "all" || showOverdueOnly || !!search}
+          onClearFilters={() => {
+            setSearch("");
+            setFilterStatus("all");
+            setShowOverdueOnly(false);
+          }}
         />
-        <select
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-          className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs sm:text-sm text-gray-900 outline-none dark:border-white/10 dark:bg-gray-800 dark:text-white shadow-2xs"
-        >
-          <option value="all">{t("allStatuses")}</option>
-          <option value="paid">{t("paid")}</option>
-          <option value="unpaid">{t("unpaid")}</option>
-          <option value="partial">{t("partial")}</option>
-        </select>
         <button
           onClick={() => setShowOverdueOnly((v) => !v)}
           className={`rounded-xl border px-3 py-2 text-xs sm:text-sm font-medium transition-all shadow-2xs ${showOverdueOnly ? "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-500/20 dark:text-amber-400 dark:border-amber-500/30" : "border-gray-200 bg-white text-gray-600 hover:text-gray-900 dark:border-white/10 dark:bg-white/5 dark:text-gray-400 dark:hover:text-white"}`}
@@ -365,11 +406,40 @@ export default function Fees() {
         </button>
       </div>
 
+      <FiltersMenu
+        isMenuOpen={isMenuOpen}
+        setIsMenuOpen={setIsMenuOpen}
+        filters={[
+          {
+            key: "status",
+            label: String(t("status")),
+            type: "select",
+            options: [
+              { value: "all", label: String(t("allStatuses") || "All") },
+              ...FEE_STATUSES.map(s => ({ value: s.value, label: s.label }))
+            ],
+          }
+        ]}
+        values={{ status: filterStatus }}
+        onChange={(key, value) => {
+          if (key === "status") setFilterStatus(value);
+        }}
+      />
+
       {/* Table */}
       <DataWrapper
         loading={loading}
         empty={filtered.length === 0}
         emptyMessage={String(t("noFeesFound"))}
+        onClearFilters={
+          search || filterStatus !== "all" || showOverdueOnly
+            ? () => {
+                setSearch("");
+                setFilterStatus("all");
+                setShowOverdueOnly(false);
+              }
+            : undefined
+        }
         skeleton={
           <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xs dark:border-white/10 dark:bg-white/5">
             <table className="w-full text-left text-sm">
@@ -444,6 +514,19 @@ export default function Fees() {
           </table>
         </div>
       </DataWrapper>
+
+      {/* Pagination Load More */}
+      {!loading && hasMore && filtered.length > 0 && (
+        <div className="flex justify-center mt-6">
+          <button
+            onClick={() => loadFees(true)}
+            disabled={loadingMore}
+            className="rounded-lg border border-gray-200 bg-white px-5 py-2.5 text-sm font-medium text-gray-900 hover:bg-gray-50 focus:outline-none dark:border-white/10 dark:bg-gray-800 dark:text-white dark:hover:bg-gray-700 disabled:opacity-50 transition-colors shadow-2xs"
+          >
+            {loadingMore ? t("loading") + "..." : t("loadMore") || "Load More"}
+          </button>
+        </div>
+      )}
 
       {/* Dialog */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>

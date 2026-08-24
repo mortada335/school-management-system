@@ -3,14 +3,17 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAcademicYear } from "@/contexts/AcademicYearContext";
 import { useTranslation } from "@/lib/i18n";
 import {
-  fetchCollection,
+  fetchCollectionPaginated,
   addDocument,
   updateDocument,
   deleteDocument,
   orderBy,
   where,
+  type QueryConstraint,
 } from "@/lib/firestore-helpers";
 import type { Announcement, AnnPriority, AnnouncementTarget } from "@/types";
+import { usePagination } from "@/hooks/usePagination";
+import FiltersSection from "@/components/filters-ui/FiltersSection";
 import {
   Dialog,
   DialogContent,
@@ -54,6 +57,7 @@ export default function Announcements() {
 
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Announcement | null>(null);
   const [form, setForm] = useState(emptyForm());
@@ -62,26 +66,50 @@ export default function Announcements() {
   const [deleting, setDeleting] = useState(false);
   const [search, setSearch] = useState("");
   const [showArchived, setShowArchived] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  const load = useCallback(async () => {
+  const { lastDoc, hasMore, resetPagination, nextPage } = usePagination();
+
+  const loadAnnouncements = useCallback(async (isLoadMore = false) => {
     if (!schoolId) return;
-    setLoading(true);
+    if (isLoadMore) setLoadingMore(true);
+    else setLoading(true);
+
     try {
-      const data = await fetchCollection<Announcement>(schoolId, "announcements", [
+      const constraints: QueryConstraint[] = [
         where("academicYear", "==", activeYear),
         orderBy("createdAt", "desc"),
-      ]);
-      setAnnouncements(data);
+      ];
+
+      const { data, lastDoc: newLastDoc, hasMore: newHasMore } = await fetchCollectionPaginated<Announcement>(
+        schoolId,
+        "announcements",
+        constraints,
+        20,
+        isLoadMore ? lastDoc : null
+      );
+      
+      setAnnouncements(prev => isLoadMore ? [...prev, ...data] : data);
+      nextPage(newLastDoc, newHasMore);
     } catch (err) {
       console.error("Error loading announcements:", err);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
-  }, [schoolId, activeYear]);
+  }, [schoolId, activeYear, lastDoc, nextPage]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    resetPagination();
+  }, [activeYear, schoolId, resetPagination]);
+
+  useEffect(() => {
+    if (loading) {
+      loadAnnouncements(false);
+    }
+  }, [loading, loadAnnouncements]);
+
+  const triggerReload = () => setLoading(true);
 
   const openAdd = () => { setEditing(null); setForm(emptyForm()); setModalOpen(true); };
   const openEdit = (ann: Announcement) => {
@@ -115,7 +143,7 @@ export default function Announcements() {
         await addDocument(schoolId, "announcements", data);
       }
       setModalOpen(false);
-      await load();
+      triggerReload();
     } catch (err) {
       console.error("Error saving announcement:", err);
     } finally {
@@ -126,7 +154,7 @@ export default function Announcements() {
   const togglePin = async (ann: Announcement) => {
     if (!schoolId) return;
     await updateDocument(schoolId, "announcements", ann.id, { pinned: !ann.pinned });
-    await load();
+    triggerReload();
   };
 
   const handleDelete = (ann: Announcement) => {
@@ -139,7 +167,7 @@ export default function Announcements() {
     try {
       await deleteDocument(schoolId, "announcements", deleteTarget.id);
       setDeleteTarget(null);
-      await load();
+      triggerReload();
     } catch (err) {
       console.error("Error deleting announcement:", err);
     } finally {
@@ -182,12 +210,18 @@ export default function Announcements() {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-2.5 sm:gap-3 flex-wrap">
-        <input
-          placeholder={t("searchAnnouncements")}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 max-w-full sm:max-w-xs rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs sm:text-sm text-gray-900 outline-none placeholder:text-gray-400 focus:border-indigo-500 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-gray-500 shadow-2xs"
+      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+        <FiltersSection
+          searchQuery={search}
+          setSearchQuery={setSearch}
+          isMenuOpen={isMenuOpen}
+          setIsMenuOpen={setIsMenuOpen}
+          placeholderKey="searchAnnouncements"
+          hasActiveFilters={showArchived || !!search}
+          onClearFilters={() => {
+            setSearch("");
+            setShowArchived(false);
+          }}
         />
         <button
           onClick={() => setShowArchived((v) => !v)}
@@ -202,6 +236,14 @@ export default function Announcements() {
         loading={loading}
         empty={filtered.length === 0}
         emptyMessage={String(t("noAnnouncementsFound"))}
+        onClearFilters={
+          search || showArchived
+            ? () => {
+                setSearch("");
+                setShowArchived(false);
+              }
+            : undefined
+        }
         skeleton={
           <div className="space-y-4">
             {Array.from({ length: 4 }).map((_, i) => (
@@ -288,6 +330,19 @@ export default function Announcements() {
           })}
         </div>
       </DataWrapper>
+
+      {/* Pagination Load More */}
+      {!loading && hasMore && filtered.length > 0 && (
+        <div className="flex justify-center mt-6">
+          <button
+            onClick={() => loadAnnouncements(true)}
+            disabled={loadingMore}
+            className="rounded-lg border border-gray-200 bg-white px-5 py-2.5 text-sm font-medium text-gray-900 hover:bg-gray-50 focus:outline-none dark:border-white/10 dark:bg-gray-800 dark:text-white dark:hover:bg-gray-700 disabled:opacity-50 transition-colors shadow-2xs"
+          >
+            {loadingMore ? t("loading") + "..." : t("loadMore") || "Load More"}
+          </button>
+        </div>
+      )}
 
       {/* Dialog */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>

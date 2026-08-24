@@ -1,9 +1,10 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAcademicYear } from "@/contexts/AcademicYearContext";
 import { useTranslation } from "@/lib/i18n";
 import {
   fetchCollection,
+  subscribeCollection,
   batchSetDocuments,
   where,
   orderBy,
@@ -52,39 +53,62 @@ export default function Attendance() {
 
   useEffect(() => {
     let active = true;
-    async function loadData() {
-      if (!schoolId || !selectedClass || !selectedDate) return;
-      setLoading(true);
-      setSaved(false);
+    if (!schoolId || !selectedClass || !selectedDate) return;
+    setLoading(true);
+    setSaved(false);
 
-      try {
-        const [studs, existing] = await Promise.all([
-          fetchCollection<Student>(schoolId, "students", [
-            where("classId", "==", selectedClass),
-            orderBy("name"),
-          ]),
-          fetchCollection<AttendanceRecord>(schoolId, "attendance", [
-            where("classId", "==", selectedClass),
-            where("date", "==", selectedDate),
-            where("academicYear", "==", activeYear),
-          ]),
-        ]);
+    // Load students once
+    fetchCollection<Student>(schoolId, "students", [
+      where("classId", "==", selectedClass),
+      orderBy("name"),
+    ]).then((studs) => {
+      if (!active) return;
+      setStudents(studs);
+      
+      // Initialize maps for new students to defaults
+      setAttendanceMap(prev => {
+        const nm = { ...prev };
+        studs.forEach(s => { if (!nm[s.id]) nm[s.id] = "present"; });
+        return nm;
+      });
+      setNotesMap(prev => {
+        const nm = { ...prev };
+        studs.forEach(s => { if (nm[s.id] === undefined) nm[s.id] = ""; });
+        return nm;
+      });
+    }).catch(err => {
+      console.error("Error loading students:", err);
+    });
+
+    // Real-time listener for attendance
+    const unsubscribe = subscribeCollection<AttendanceRecord>(
+      schoolId,
+      "attendance",
+      [
+        where("classId", "==", selectedClass),
+        where("date", "==", selectedDate),
+        where("academicYear", "==", activeYear),
+      ],
+      (existing) => {
         if (!active) return;
-        setStudents(studs);
-        const am: Record<string, AttendanceStatus> = {};
-        const nm: Record<string, string> = {};
-        studs.forEach((s) => { am[s.id] = "present"; nm[s.id] = ""; });
-        existing.forEach((r) => { am[r.studentId] = r.status; nm[r.studentId] = r.notes || ""; });
-        setAttendanceMap(am);
-        setNotesMap(nm);
-      } catch (err) {
-        console.error("Error loading attendance:", err);
-      } finally {
-        if (active) setLoading(false);
+        setAttendanceMap(prev => {
+          const nm = { ...prev };
+          existing.forEach(r => { nm[r.studentId] = r.status; });
+          return nm;
+        });
+        setNotesMap(prev => {
+          const nm = { ...prev };
+          existing.forEach(r => { nm[r.studentId] = r.notes || ""; });
+          return nm;
+        });
+        setLoading(false);
       }
-    }
-    loadData();
-    return () => { active = false; };
+    );
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, [schoolId, selectedClass, selectedDate, activeYear]);
 
   const handleMarkAll = (status: AttendanceStatus) => {
@@ -120,27 +144,25 @@ export default function Attendance() {
     }
   };
 
-  // Load history
-  const loadHistory = useCallback(async () => {
+  // Load history real-time
+  useEffect(() => {
     if (!schoolId || !histClass) return;
     setHistoryLoading(true);
-    try {
-      const recs = await fetchCollection<AttendanceRecord>(schoolId, "attendance", [
+    const unsubscribe = subscribeCollection<AttendanceRecord>(
+      schoolId,
+      "attendance",
+      [
         where("classId", "==", histClass),
         where("academicYear", "==", activeYear),
         orderBy("date", "desc"),
-      ]);
-      setHistory(recs);
-    } catch (err) {
-      console.error("Error loading history:", err);
-    } finally {
-      setHistoryLoading(false);
-    }
+      ],
+      (recs) => {
+        setHistory(recs);
+        setHistoryLoading(false);
+      }
+    );
+    return () => unsubscribe();
   }, [schoolId, histClass, activeYear]);
-
-  useEffect(() => {
-    loadHistory();
-  }, [loadHistory]);
 
   const classOptions = classes.map((c) => ({ value: c.id, label: c.name, sublabel: c.nameEn }));
 

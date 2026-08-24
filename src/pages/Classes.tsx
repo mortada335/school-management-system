@@ -4,14 +4,19 @@ import { useAcademicYear } from "@/contexts/AcademicYearContext";
 import { useTranslation } from "@/lib/i18n";
 import {
   fetchCollection,
+  fetchCollectionPaginated,
   addDocument,
   updateDocument,
   deleteDocument,
   orderBy,
   where,
   countDocuments,
+  type QueryConstraint,
 } from "@/lib/firestore-helpers";
 import type { Class, Teacher } from "@/types";
+import { usePagination } from "@/hooks/usePagination";
+import FiltersSection from "@/components/filters-ui/FiltersSection";
+import FiltersMenu from "@/components/filters-ui/FiltersMenu";
 import {
   Dialog,
   DialogContent,
@@ -56,6 +61,7 @@ export default function Classes() {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [studentCounts, setStudentCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [viewMode, setViewMode] = useState<"card" | "table">("card");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Class | null>(null);
@@ -63,29 +69,61 @@ export default function Classes() {
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Class | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [search, setSearch] = useState("");
+  const [filterGrade, setFilterGrade] = useState("all");
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  const load = useCallback(async () => {
+  const { lastDoc, hasMore, resetPagination, nextPage } = usePagination();
+
+  const loadTeachers = useCallback(async () => {
     if (!schoolId) return;
-    setLoading(true);
     try {
-      const cls = await fetchCollection<Class>(schoolId, "classes", [
-        where("academicYear", "==", activeYear),
-        orderBy("grade"),
-      ]);
-      setClasses(cls);
-
-      const tch = await fetchCollection<Teacher>(schoolId, "teachers", [
-        orderBy("name"),
-      ]);
+      const tch = await fetchCollection<Teacher>(schoolId, "teachers", [orderBy("name")]);
       setTeachers(tch);
+    } catch (err) {
+      console.error(err);
+    }
+  }, [schoolId]);
 
-      const counts: Record<string, number> = {};
+  useEffect(() => {
+    loadTeachers();
+  }, [loadTeachers]);
+
+  const loadClasses = useCallback(async (isLoadMore = false) => {
+    if (!schoolId) return;
+    if (isLoadMore) setLoadingMore(true);
+    else setLoading(true);
+
+    try {
+      const constraints: QueryConstraint[] = [
+        where("academicYear", "==", activeYear),
+      ];
+      if (filterGrade !== "all") {
+        constraints.push(where("grade", "==", Number(filterGrade)));
+      }
+      constraints.push(orderBy("grade"));
+
+      const { data, lastDoc: newLastDoc, hasMore: newHasMore } = await fetchCollectionPaginated<Class>(
+        schoolId,
+        "classes",
+        constraints,
+        20,
+        isLoadMore ? lastDoc : null
+      );
+      
+      const newClasses = isLoadMore ? [...classes, ...data] : data;
+      setClasses(newClasses);
+      nextPage(newLastDoc, newHasMore);
+
+      const counts: Record<string, number> = { ...studentCounts };
       await Promise.all(
-        cls.map(async (c) => {
-          counts[c.id] = await countDocuments(schoolId, "students", [
-            where("classId", "==", c.id),
-            where("enrollmentYear", "==", activeYear),
-          ]);
+        data.map(async (c) => {
+          if (counts[c.id] === undefined) {
+            counts[c.id] = await countDocuments(schoolId, "students", [
+              where("classId", "==", c.id),
+              where("enrollmentYear", "==", activeYear),
+            ]);
+          }
         })
       );
       setStudentCounts(counts);
@@ -93,12 +131,21 @@ export default function Classes() {
       console.error(err);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
-  }, [schoolId, activeYear]);
+  }, [schoolId, activeYear, filterGrade, lastDoc, nextPage, classes, studentCounts]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    resetPagination();
+  }, [filterGrade, activeYear, schoolId, resetPagination]);
+
+  useEffect(() => {
+    if (loading) {
+      loadClasses(false);
+    }
+  }, [loading, loadClasses]);
+
+  const triggerReload = () => setLoading(true);
 
   const openAdd = () => {
     setEditing(null);
@@ -136,7 +183,7 @@ export default function Classes() {
         await addDocument(schoolId, "classes", data);
       }
       setModalOpen(false);
-      await load();
+      triggerReload();
     } catch (err) {
       console.error(err);
     } finally {
@@ -154,7 +201,7 @@ export default function Classes() {
     try {
       await deleteDocument(schoolId, "classes", deleteTarget.id);
       setDeleteTarget(null);
-      await load();
+      triggerReload();
     } catch (err) {
       console.error(err);
     } finally {
@@ -168,8 +215,14 @@ export default function Classes() {
     sublabel: t.nameEn,
   }));
 
+  const filtered = classes.filter(c => {
+    if (!search) return true;
+    return c.name.toLowerCase().includes(search.toLowerCase()) ||
+           (c.teacherName && c.teacherName.toLowerCase().includes(search.toLowerCase()));
+  });
+
   const gradeGroups: Record<number, Class[]> = {};
-  for (const c of classes) {
+  for (const c of filtered) {
     if (!gradeGroups[c.grade]) gradeGroups[c.grade] = [];
     gradeGroups[c.grade].push(c);
   }
@@ -207,10 +260,59 @@ export default function Classes() {
         </div>
       </div>
 
+      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+        <FiltersSection
+          searchQuery={search}
+          setSearchQuery={setSearch}
+          isMenuOpen={isMenuOpen}
+          setIsMenuOpen={setIsMenuOpen}
+          placeholderKey="searchClasses"
+          hasActiveFilters={filterGrade !== "all" || !!search}
+          onClearFilters={() => {
+            setSearch("");
+            setFilterGrade("all");
+          }}
+        />
+      </div>
+
+      <FiltersMenu
+        isMenuOpen={isMenuOpen}
+        setIsMenuOpen={setIsMenuOpen}
+        filters={[
+          {
+            key: "grade",
+            label: String(t("grade")),
+            type: "select",
+            options: [
+              { value: "all", label: String(t("allGrades") || "All") },
+              ...GRADES.map(g => ({ value: String(g), label: `${t("grade")} ${g}` }))
+            ],
+          }
+        ]}
+        values={{ grade: filterGrade }}
+        onChange={(key, value) => {
+          if (key === "grade") setFilterGrade(value);
+        }}
+      />
+
       <DataWrapper
         loading={loading}
-        empty={classes.length === 0}
-        emptyMessage={lang === "ar" ? "لا توجد صفوف دراسية لهذا العام الدراسي." : "No classes found for this academic year."}
+        empty={filtered.length === 0}
+        emptyMessage={
+          search || filterGrade !== "all"
+            ? String(t("noClassesFound") || "No classes found matching your search")
+            : lang === "ar"
+            ? "لا توجد صفوف دراسية لهذا العام الدراسي."
+            : "No classes found for this academic year."
+        }
+        onClearFilters={
+          search || filterGrade !== "all"
+            ? () => {
+                setSearch("");
+                setFilterGrade("all");
+              }
+            : undefined
+        }
         skeleton={
           viewMode === "card" ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -326,7 +428,7 @@ export default function Classes() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-white/5">
-                {classes.map((c) => (
+                {filtered.map((c) => (
                   <tr key={c.id} className="hover:bg-gray-50/80 dark:hover:bg-white/5 transition-colors">
                     <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{c.name}</td>
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-300 font-mono text-xs">{t("grade")} {c.grade}</td>
@@ -363,6 +465,19 @@ export default function Classes() {
           </div>
         )}
       </DataWrapper>
+
+      {/* Pagination Load More */}
+      {!loading && hasMore && filtered.length > 0 && (
+        <div className="flex justify-center mt-6">
+          <button
+            onClick={() => loadClasses(true)}
+            disabled={loadingMore}
+            className="rounded-lg border border-gray-200 bg-white px-5 py-2.5 text-sm font-medium text-gray-900 hover:bg-gray-50 focus:outline-none dark:border-white/10 dark:bg-gray-800 dark:text-white dark:hover:bg-gray-700 disabled:opacity-50 transition-colors shadow-2xs"
+          >
+            {loadingMore ? t("loading") + "..." : t("loadMore") || "Load More"}
+          </button>
+        </div>
+      )}
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent>

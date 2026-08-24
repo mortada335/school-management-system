@@ -3,12 +3,18 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTranslation } from "@/lib/i18n";
 import {
   fetchCollection,
+  fetchCollectionPaginated,
   addDocument,
   updateDocument,
   deleteDocument,
   orderBy,
+  where,
+  type QueryConstraint,
 } from "@/lib/firestore-helpers";
 import type { Teacher, Subject } from "@/types";
+import { usePagination } from "@/hooks/usePagination";
+import FiltersSection from "@/components/filters-ui/FiltersSection";
+import FiltersMenu from "@/components/filters-ui/FiltersMenu";
 import {
   Dialog,
   DialogContent,
@@ -62,6 +68,7 @@ export default function Teachers() {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [allSubjects, setAllSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Teacher | null>(null);
   const [form, setForm] = useState(emptyForm());
@@ -69,30 +76,69 @@ export default function Teachers() {
   const [deleteTarget, setDeleteTarget] = useState<Teacher | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [search, setSearch] = useState("");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [assignTarget, setAssignTarget] = useState<Teacher | null>(null);
   const [assignSubjectIds, setAssignSubjectIds] = useState<string[]>([]);
 
-  const load = useCallback(async () => {
+  const { lastDoc, hasMore, resetPagination, nextPage } = usePagination();
+
+  const loadSubjects = useCallback(async () => {
     if (!schoolId) return;
     try {
-      const [data, subj] = await Promise.all([
-        fetchCollection<Teacher>(schoolId, "teachers", [orderBy("name")]),
-        fetchCollection<Subject>(schoolId, "subjects", [orderBy("name")]),
-      ]);
-      setTeachers(data);
+      const subj = await fetchCollection<Subject>(schoolId, "subjects", [orderBy("name")]);
       setAllSubjects(subj);
     } catch (err) {
-      console.error("Error loading teachers:", err);
-    } finally {
-      setLoading(false);
+      console.error("Error loading subjects:", err);
     }
   }, [schoolId]);
 
   useEffect(() => {
-    const id = setTimeout(() => load(), 0);
-    return () => clearTimeout(id);
-  }, [load]);
+    loadSubjects();
+  }, [loadSubjects]);
+
+  const loadTeachers = useCallback(async (isLoadMore = false) => {
+    if (!schoolId) return;
+    if (isLoadMore) setLoadingMore(true);
+    else setLoading(true);
+
+    try {
+      const constraints: QueryConstraint[] = [];
+      if (filterStatus !== "all") {
+        constraints.push(where("status", "==", filterStatus));
+      }
+      constraints.push(orderBy("name"));
+
+      const { data, lastDoc: newLastDoc, hasMore: newHasMore } = await fetchCollectionPaginated<Teacher>(
+        schoolId,
+        "teachers",
+        constraints,
+        20,
+        isLoadMore ? lastDoc : null
+      );
+      
+      setTeachers(prev => isLoadMore ? [...prev, ...data] : data);
+      nextPage(newLastDoc, newHasMore);
+    } catch (err) {
+      console.error("Error loading teachers:", err);
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }, [schoolId, filterStatus, lastDoc, nextPage]);
+
+  useEffect(() => {
+    resetPagination();
+  }, [filterStatus, schoolId, resetPagination]);
+
+  useEffect(() => {
+    if (loading) {
+      loadTeachers(false);
+    }
+  }, [loading, loadTeachers]);
+
+  const triggerReload = () => setLoading(true);
 
   const openAdd = () => { setEditing(null); setForm(emptyForm()); setModalOpen(true); };
   const openEdit = (t: Teacher) => {
@@ -123,7 +169,7 @@ export default function Teachers() {
     if (!schoolId || !assignTarget) return;
     await updateDocument(schoolId, "teachers", assignTarget.id, { subjectIds: assignSubjectIds });
     setAssignModalOpen(false);
-    await load();
+    triggerReload();
   };
 
   const toggleSubject = (id: string) => {
@@ -142,7 +188,7 @@ export default function Teachers() {
         await addDocument(schoolId, "teachers", { ...form });
       }
       setModalOpen(false);
-      await load();
+      triggerReload();
     } catch (err) {
       console.error("Error saving teacher:", err);
     } finally {
@@ -160,7 +206,7 @@ export default function Teachers() {
     try {
       await deleteDocument(schoolId, "teachers", deleteTarget.id);
       setDeleteTarget(null);
-      await load();
+      triggerReload();
     } catch (err) {
       console.error("Error deleting teacher:", err);
     } finally {
@@ -168,12 +214,13 @@ export default function Teachers() {
     }
   };
 
-  const filtered = teachers.filter((t) =>
-    t.name.includes(search) ||
-    t.nameEn.toLowerCase().includes(search.toLowerCase()) ||
-    t.email.toLowerCase().includes(search.toLowerCase()) ||
-    (t.specialization ?? "").includes(search)
-  );
+  const filtered = teachers.filter((t) => {
+    if (!search) return true;
+    return t.name.includes(search) ||
+           t.nameEn.toLowerCase().includes(search.toLowerCase()) ||
+           t.email.toLowerCase().includes(search.toLowerCase()) ||
+           (t.specialization ?? "").includes(search);
+  });
 
   const excelData = filtered.map((t) => ({
     [t.name]: t.name,
@@ -224,21 +271,57 @@ export default function Teachers() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <input
-          placeholder={t("searchTeachers")}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 max-w-full sm:max-w-xs rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs sm:text-sm text-gray-900 outline-none placeholder:text-gray-400 focus:border-indigo-500 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-gray-500 shadow-2xs"
+      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+        <FiltersSection
+          searchQuery={search}
+          setSearchQuery={setSearch}
+          isMenuOpen={isMenuOpen}
+          setIsMenuOpen={setIsMenuOpen}
+          placeholderKey="searchTeachers"
+          hasActiveFilters={filterStatus !== "all" || !!search}
+          onClearFilters={() => {
+            setSearch("");
+            setFilterStatus("all");
+          }}
         />
         <ExcelExport data={excelData} filename="teachers" label={t("exportExcel")} />
       </div>
+
+      <FiltersMenu
+        isMenuOpen={isMenuOpen}
+        setIsMenuOpen={setIsMenuOpen}
+        filters={[
+          {
+            key: "status",
+            label: String(t("status")),
+            type: "select",
+            options: [
+              { value: "all", label: String(t("allStatus") || "All") },
+              { value: "active", label: String(t("active")) },
+              { value: "on-leave", label: String(t("onLeave")) },
+              { value: "resigned", label: String(t("resigned")) },
+            ],
+          }
+        ]}
+        values={{ status: filterStatus }}
+        onChange={(key, value) => {
+          if (key === "status") setFilterStatus(value);
+        }}
+      />
 
       {/* Teachers Table */}
       <DataWrapper
         loading={loading}
         empty={filtered.length === 0}
         emptyMessage={String(t("noTeachersFound"))}
+        onClearFilters={
+          search || filterStatus !== "all"
+            ? () => {
+                setSearch("");
+                setFilterStatus("all");
+              }
+            : undefined
+        }
         skeleton={
           <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xs dark:border-white/10 dark:bg-white/5">
             <table className="w-full text-left text-sm">
@@ -329,6 +412,19 @@ export default function Teachers() {
           </table>
         </div>
       </DataWrapper>
+
+      {/* Pagination Load More */}
+      {!loading && hasMore && filtered.length > 0 && (
+        <div className="flex justify-center mt-6">
+          <button
+            onClick={() => loadTeachers(true)}
+            disabled={loadingMore}
+            className="rounded-lg border border-gray-200 bg-white px-5 py-2.5 text-sm font-medium text-gray-900 hover:bg-gray-50 focus:outline-none dark:border-white/10 dark:bg-gray-800 dark:text-white dark:hover:bg-gray-700 disabled:opacity-50 transition-colors shadow-2xs"
+          >
+            {loadingMore ? t("loading") + "..." : t("loadMore") || "Load More"}
+          </button>
+        </div>
+      )}
 
       {/* Add/Edit Dialog */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
