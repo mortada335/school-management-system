@@ -98,30 +98,51 @@ document.documentElement.setAttribute("dir", lang === "ar" ? "rtl" : "ltr");
 
 The layout flips automatically without conditional class lists or duplicate CSS.
 
-### Loading States
+### Filter Architecture and Search Debouncing
 
-Early versions of each page had the same loading pattern:
+Rather than having each page build its own search inputs and filter menus from scratch, I created a centralized filter system composed of two coordinated components:
+
+- **`FiltersSection.tsx`**: An inline search bar containing the search trigger, input field with local debounce, filter menu toggle, and a clear-all button. It uses a custom `useDebounce` hook to throttle query updates and prevent excessive database reads during rapid keystrokes.
+- **`FiltersMenu.tsx`**: An animated drawer powered by Framer Motion that dynamically renders filter controls based on a configuration schema. It supports standard selects, date pickers, year/month pickers, and searchable comboboxes.
 
 ```tsx
-if (loading) return "..."
+<FiltersSection
+  searchQuery={search}
+  setSearchQuery={setSearch}
+  isMenuOpen={isMenuOpen}
+  setIsMenuOpen={setIsMenuOpen}
+  placeholderKey="searchStudents"
+  hasActiveFilters={filterClass !== "all" || filterGender !== "all" || !!search}
+  onClearFilters={handleReset}
+/>
+<FiltersMenu
+  isMenuOpen={isMenuOpen}
+  setIsMenuOpen={setIsMenuOpen}
+  filters={filterConfigs}
+  values={filterValues}
+  onChange={handleFilterChange}
+/>
 ```
 
-This lacked consistency and didn't show what data was expected. I extracted three components to fix this:
+### Loading and Empty State Management
+
+Early versions of each page had ad-hoc loading spinners and inconsistent empty states. I extracted reusable components to standardize data fetching states:
 
 **`<DataWrapper />`**
 
-Every page that fetches data was reimplementing the same conditional checks. `DataWrapper` handles all four states (loading, error, empty, data) in one place:
+`DataWrapper` unifies the four async data states: loading, error, empty, and populated data. It handles empty states both when a collection is completely empty and when a search or filter produces zero matching results. It also includes an inline "Clear filters" action that lets users reset active filters directly from the empty state view.
 
 ```tsx
 <DataWrapper
   loading={loading}
   error={error}
-  empty={students.length === 0}
-  emptyMessage="No students registered yet"
+  empty={filtered.length === 0}
+  emptyMessage="No students found matching your filters"
+  onClearFilters={handleReset}
   skeleton={<SkeletonTableRow cols={7} />}
   onRetry={loadData}
 >
-  <StudentTable data={students} />
+  <StudentTable data={filtered} />
 </DataWrapper>
 ```
 
@@ -173,11 +194,13 @@ I implemented several optimizations to improve the application's performance:
 | Core Framework | React 19 + TypeScript | |
 | Build Tool | Vite 8 + Rolldown | |
 | Styling | Tailwind CSS v4 | OKLCH tokens, logical properties, class-based dark mode |
+| UI Components | Radix / Base UI + Lucide React | Portaled dialogs, tooltips, select dropdowns |
+| Animations | Framer Motion | Smooth drawer animations for filter menus |
 | Database | Firebase Firestore | Multi-tenant `/schools/{id}/` collection structure |
 | Authentication | Firebase Auth | Token-based, claims used in Firestore rules |
 | Charts | Recharts | Receives theme colors via JS props |
 | Excel Export | SheetJS (`xlsx`) | Client-side, no backend needed |
-| Icons | Lucide React | |
+| Date Handling | date-fns | Formatting and comparisons |
 | Localization | Custom context | Arabic + English, RTL/LTR switching |
 
 ---
